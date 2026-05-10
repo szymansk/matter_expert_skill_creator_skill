@@ -1,7 +1,9 @@
 import json
+from datetime import date
 from pathlib import Path
 
-from matter_expert.index import ConceptIndex, ConceptIndexEntry
+from matter_expert.concept import ConceptFrontmatter, Source
+from matter_expert.index import AliasMap, ConceptIndex, ConceptIndexEntry, LinkGraph, LinkGraphEntry, MOCMap, MOCMapEntry
 
 
 def test_concept_index_entry_round_trip():
@@ -74,9 +76,6 @@ def test_concept_index_disk_format_is_json(tmp_path: Path):
     assert raw["x"]["title"] == "X"
 
 
-from matter_expert.index import MOCMap, MOCMapEntry
-
-
 def test_moc_map_entry_round_trip():
     entry = MOCMapEntry(
         path="MOCs/authentication.md",
@@ -104,11 +103,6 @@ def test_moc_map_round_trip(tmp_path: Path):
 
     reread = MOCMap.read(file)
     assert reread == mocs
-
-
-from matter_expert.concept import ConceptFrontmatter, Source
-from datetime import date
-from matter_expert.index import LinkGraph, LinkGraphEntry
 
 
 def test_link_graph_entry_round_trip():
@@ -207,9 +201,6 @@ def test_link_graph_build_includes_symmetric_links_unchanged():
     assert graph["b"].related == ["a"]
     assert graph["a"].contrasts == ["c"]
     assert graph["c"].contrasts == ["a"]
-
-
-from matter_expert.index import AliasMap
 
 
 def test_alias_map_round_trip(tmp_path: Path):

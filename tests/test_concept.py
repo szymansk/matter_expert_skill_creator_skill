@@ -1,6 +1,7 @@
 from datetime import date
+from pathlib import Path
 
-from matter_expert.concept import ConceptFrontmatter, Source
+from matter_expert.concept import ConceptFrontmatter, ConceptPage, Source
 
 
 def test_source_from_dict():
@@ -99,10 +100,6 @@ def test_concept_frontmatter_normalizes_wikilinks_in_links():
     })
 
     assert fm.related == ["jwt-tokens", "session-management"]
-
-
-from pathlib import Path
-from matter_expert.concept import ConceptPage
 
 
 def test_concept_page_read(tmp_path: Path):

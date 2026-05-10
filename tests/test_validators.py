@@ -1,10 +1,15 @@
 from datetime import date
+from pathlib import Path
 
-from matter_expert.concept import ConceptFrontmatter, Source
+from matter_expert.concept import ConceptFrontmatter, ConceptPage, Source
+from matter_expert.paths import VaultPaths
 from matter_expert.validators import (
-    ValidationIssue,
     Severity,
+    ValidationIssue,
+    detect_circular_prerequisites,
+    resolve_wikilinks,
     validate_concept_frontmatter,
+    validate_vault,
 )
 
 
@@ -66,9 +71,6 @@ def test_self_link_fails():
         concept_name="self",
     )
     assert any(i.severity == Severity.ERROR and "self" in i.message.lower() for i in issues)
-
-
-from matter_expert.validators import resolve_wikilinks, detect_circular_prerequisites
 
 
 def test_resolve_wikilinks_all_resolve():
@@ -162,11 +164,6 @@ def test_no_circular_prerequisites_when_dag():
     assert issues == []
 
 
-from pathlib import Path
-from matter_expert.paths import VaultPaths
-from matter_expert.validators import validate_vault
-
-
 def test_validate_empty_vault_warns(tmp_path: Path):
     """An empty vault directory is structurally valid but warns about no concepts."""
     vault_root = tmp_path / "vault"
@@ -195,8 +192,6 @@ def test_validate_missing_required_directory_errors(tmp_path: Path):
 
 def test_validate_complete_minimal_vault(tmp_path: Path):
     """A vault with one valid concept passes integrity validation."""
-    from matter_expert.concept import ConceptFrontmatter, ConceptPage, Source
-
     vault_root = tmp_path / "vault"
     paths = VaultPaths(root=vault_root)
     paths.concepts.mkdir(parents=True)
@@ -217,8 +212,6 @@ def test_validate_complete_minimal_vault(tmp_path: Path):
 
 
 def test_validate_detects_broken_wikilink_in_vault(tmp_path: Path):
-    from matter_expert.concept import ConceptFrontmatter, ConceptPage, Source
-
     vault_root = tmp_path / "vault"
     paths = VaultPaths(root=vault_root)
     paths.concepts.mkdir(parents=True)
