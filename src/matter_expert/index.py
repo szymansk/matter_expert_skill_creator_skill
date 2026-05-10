@@ -235,3 +235,51 @@ class LinkGraph:
                     entries[refined].refined_by.append(source_name)
 
         return cls(entries)
+
+
+@dataclass
+class AliasMap:
+    """Maps user-facing aliases to canonical concept names.
+
+    Lookups are case-insensitive by default — internally the map stores
+    lowercased keys but preserves the original casing in the persisted
+    JSON (for human readability and round-trip-fidelity).
+    """
+
+    entries: dict[str, str] = field(default_factory=dict)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, AliasMap):
+            return NotImplemented
+        return self.entries == other.entries
+
+    def resolve(self, alias: str) -> str | None:
+        """Look up an alias, case-insensitively. Returns the canonical
+        concept name or None if no match."""
+        target = alias.strip().lower()
+        for key, value in self.entries.items():
+            if key.lower() == target:
+                return value
+        return None
+
+    @classmethod
+    def read(cls, path: Path) -> "AliasMap":
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return cls(dict(raw))
+
+    def write(self, path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(self.entries, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+
+    @classmethod
+    def build(cls, index: ConceptIndex) -> "AliasMap":
+        """Invert each concept's aliases into an AliasMap."""
+        entries: dict[str, str] = {}
+        for name in index:
+            entry = index[name]
+            for alias in entry.aliases:
+                entries[alias] = name
+        return cls(entries)

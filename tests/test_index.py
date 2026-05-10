@@ -207,3 +207,60 @@ def test_link_graph_build_includes_symmetric_links_unchanged():
     assert graph["b"].related == ["a"]
     assert graph["a"].contrasts == ["c"]
     assert graph["c"].contrasts == ["a"]
+
+
+from matter_expert.index import AliasMap
+
+
+def test_alias_map_round_trip(tmp_path: Path):
+    aliases = AliasMap({
+        "OAuth": "oauth2-flow",
+        "OAuth 2.0": "oauth2-flow",
+        "Authorization Code Grant": "oauth2-flow",
+        "JWT": "jwt-tokens",
+    })
+    file = tmp_path / "alias_map.json"
+    aliases.write(file)
+
+    assert AliasMap.read(file) == aliases
+
+
+def test_alias_map_lookup_case_insensitive():
+    aliases = AliasMap({"OAuth": "oauth2-flow", "JWT": "jwt-tokens"})
+
+    assert aliases.resolve("OAuth") == "oauth2-flow"
+    assert aliases.resolve("oauth") == "oauth2-flow"
+    assert aliases.resolve("OAUTH") == "oauth2-flow"
+    assert aliases.resolve("jwt") == "jwt-tokens"
+
+
+def test_alias_map_lookup_missing_returns_none():
+    aliases = AliasMap({"OAuth": "oauth2-flow"})
+    assert aliases.resolve("nonexistent") is None
+
+
+def test_alias_map_build_from_concept_index():
+    """Builder builds the AliasMap by inverting the aliases of each
+    ConceptIndexEntry."""
+    index = ConceptIndex({
+        "oauth2-flow": ConceptIndexEntry(
+            path="concepts/oauth2-flow.md",
+            title="OAuth2 Flow",
+            summary="...", tags=[],
+            aliases=["OAuth", "OAuth 2.0"],
+            moc=[],
+        ),
+        "jwt-tokens": ConceptIndexEntry(
+            path="concepts/jwt-tokens.md",
+            title="JWT Tokens",
+            summary="...", tags=[],
+            aliases=["JWT", "JSON Web Token"],
+            moc=[],
+        ),
+    })
+    aliases = AliasMap.build(index)
+
+    assert aliases.resolve("OAuth") == "oauth2-flow"
+    assert aliases.resolve("OAuth 2.0") == "oauth2-flow"
+    assert aliases.resolve("JWT") == "jwt-tokens"
+    assert aliases.resolve("JSON Web Token") == "jwt-tokens"
