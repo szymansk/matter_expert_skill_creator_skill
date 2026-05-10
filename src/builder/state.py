@@ -7,7 +7,9 @@ so commits and diffs are deterministic.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 
@@ -75,3 +77,62 @@ class PhaseState:
             "completed_at": self.completed_at,
             "items": {k: v.to_dict() for k, v in self.items.items()},
         }
+
+
+@dataclass
+class PipelineState:
+    """The complete persistent state of a pipeline run.
+
+    `phases` is initialized with one PhaseState per known pipeline phase
+    so callers never need to pre-create them.
+    """
+    run_id: str
+    input_dir: str
+    url_list: list[str]
+    started: str
+    phases: dict[str, PhaseState] = field(default_factory=dict)
+    cost_tracker: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        # Pre-populate phase states for the 5 known phases.
+        from builder.phases import Phase
+        if not self.phases:
+            for phase in Phase:
+                self.phases[phase.value] = PhaseState(name=phase.value)
+        if not self.cost_tracker:
+            self.cost_tracker = {
+                "estimated_total_usd": 0.0,
+                "actual_so_far_usd": 0.0,
+                "per_phase": {},
+            }
+
+    @classmethod
+    def read(cls, path: Path) -> "PipelineState":
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        state = cls(
+            run_id=raw["run_id"],
+            input_dir=raw["input_dir"],
+            url_list=list(raw.get("url_list", [])),
+            started=raw["started"],
+            phases={
+                k: PhaseState.from_dict(v)
+                for k, v in raw.get("phases", {}).items()
+            },
+            cost_tracker=dict(raw.get("cost_tracker", {})),
+        )
+        return state
+
+    def write(self, path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        serializable = {
+            "run_id": self.run_id,
+            "input_dir": self.input_dir,
+            "url_list": list(self.url_list),
+            "started": self.started,
+            "phases": {k: v.to_dict() for k, v in self.phases.items()},
+            "cost_tracker": dict(self.cost_tracker),
+        }
+        path.write_text(
+            json.dumps(serializable, indent=2, sort_keys=True, ensure_ascii=False),
+            encoding="utf-8",
+        )
