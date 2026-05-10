@@ -77,6 +77,36 @@ def test_update_with_user_language_records_preference(memory_dir: Path):
     assert prefs["response_language"] == "de"
 
 
+def test_lru_eviction_handles_missing_last_used(memory_dir: Path):
+    """If an entry is missing last_used (e.g., manually edited file),
+    LRU eviction does not crash and treats it as oldest."""
+    from runtime.memory_update import QUERY_CACHE_MAX_ENTRIES
+    cache = {
+        f"q{i}": {
+            "matched_concepts": [],
+            "last_used": f"2026-05-{i+1:02d}T00:00:00Z",
+            "use_count": 1,
+            "user_satisfied": True,
+        }
+        for i in range(QUERY_CACHE_MAX_ENTRIES - 1)
+    }
+    # Inject an entry with no last_used at all.
+    cache["malformed"] = {
+        "matched_concepts": [],
+        "use_count": 1,
+        "user_satisfied": True,
+    }
+    save_query_cache(memory_dir / "query_cache.json", cache)
+
+    # Trigger eviction.
+    update_memory(memory_dir=memory_dir, query="newest", used_concepts=["x"])
+
+    after = load_query_cache(memory_dir / "query_cache.json")
+    # malformed should be evicted (treated as oldest)
+    assert "malformed" not in after
+    assert "newest" in after
+
+
 def test_update_evicts_entries_older_than_ttl(memory_dir: Path):
     """Entries older than QUERY_CACHE_TTL_DAYS should be evicted."""
     from runtime.memory_update import QUERY_CACHE_TTL_DAYS

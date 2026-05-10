@@ -71,7 +71,7 @@ def update_memory(
         }
 
     if len(cache) > QUERY_CACHE_MAX_ENTRIES:
-        oldest_key = min(cache.keys(), key=lambda k: cache[k]["last_used"])
+        oldest_key = min(cache.keys(), key=lambda k: cache[k].get("last_used", ""))
         del cache[oldest_key]
 
     save_query_cache(paths.query_cache, cache)
