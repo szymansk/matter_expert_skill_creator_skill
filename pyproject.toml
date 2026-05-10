@@ -20,7 +20,7 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["matter_expert*", "runtime*"]
+include = ["matter_expert*", "runtime*", "builder*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
