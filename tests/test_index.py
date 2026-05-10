@@ -72,3 +72,35 @@ def test_concept_index_disk_format_is_json(tmp_path: Path):
     raw = json.loads(file.read_text())
     assert "x" in raw
     assert raw["x"]["title"] == "X"
+
+
+from matter_expert.index import MOCMap, MOCMapEntry
+
+
+def test_moc_map_entry_round_trip():
+    entry = MOCMapEntry(
+        path="MOCs/authentication.md",
+        children=["oauth2-flow", "jwt-tokens"],
+        parents=["security"],
+    )
+    assert MOCMapEntry.from_dict(entry.to_dict()) == entry
+
+
+def test_moc_map_round_trip(tmp_path: Path):
+    mocs = MOCMap({
+        "authentication": MOCMapEntry(
+            path="MOCs/authentication.md",
+            children=["oauth2-flow", "jwt-tokens"],
+            parents=["security"],
+        ),
+        "security": MOCMapEntry(
+            path="MOCs/security.md",
+            children=[],
+            parents=[],
+        ),
+    })
+    file = tmp_path / "moc_map.json"
+    mocs.write(file)
+
+    reread = MOCMap.read(file)
+    assert reread == mocs

@@ -74,3 +74,56 @@ class ConceptIndex:
             json.dumps(serializable, indent=2, sort_keys=True),
             encoding="utf-8",
         )
+
+
+@dataclass
+class MOCMapEntry:
+    """One entry in moc_map.json."""
+
+    path: str
+    children: list[str]
+    parents: list[str]
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "MOCMapEntry":
+        return cls(
+            path=data["path"],
+            children=list(data.get("children", [])),
+            parents=list(data.get("parents", [])),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "path": self.path,
+            "children": list(self.children),
+            "parents": list(self.parents),
+        }
+
+
+@dataclass
+class MOCMap:
+    """Maps MOC name to its MOCMapEntry."""
+
+    entries: dict[str, MOCMapEntry] = field(default_factory=dict)
+
+    def __getitem__(self, name: str) -> MOCMapEntry:
+        return self.entries[name]
+
+    def __contains__(self, name: str) -> bool:
+        return name in self.entries
+
+    def __iter__(self):
+        return iter(self.entries)
+
+    @classmethod
+    def read(cls, path: Path) -> "MOCMap":
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return cls({k: MOCMapEntry.from_dict(v) for k, v in raw.items()})
+
+    def write(self, path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        serializable = {k: v.to_dict() for k, v in self.entries.items()}
+        path.write_text(
+            json.dumps(serializable, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
