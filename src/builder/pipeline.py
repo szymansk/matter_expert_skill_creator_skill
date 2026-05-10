@@ -1,0 +1,68 @@
+"""The Pipeline orchestrator class.
+
+Owns the `pipeline_state.json` file under a run directory. Provides
+methods to create a fresh run, resume an existing one, replay a phase,
+and record progress (phase status, item status, cost).
+"""
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from pathlib import Path
+
+from builder.phases import Phase
+from builder.state import PipelineState
+
+
+STATE_FILE_NAME = "pipeline_state.json"
+
+
+def _utc_iso_now() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+class Pipeline:
+    """Orchestrates a single pipeline run, persisting state to disk."""
+
+    def __init__(self, run_dir: Path, state: PipelineState) -> None:
+        self._run_dir = run_dir
+        self._state = state
+        self._state_path = run_dir / STATE_FILE_NAME
+
+    @property
+    def state(self) -> PipelineState:
+        return self._state
+
+    @property
+    def run_dir(self) -> Path:
+        return self._run_dir
+
+    def _save(self) -> None:
+        self._state.write(self._state_path)
+
+    @classmethod
+    def create(
+        cls,
+        run_id: str,
+        input_dir: Path,
+        url_list: list[str],
+        run_dir: Path,
+    ) -> "Pipeline":
+        """Create a fresh pipeline run.
+
+        Raises:
+            FileExistsError: if `run_dir` already contains a pipeline_state.json.
+        """
+        state_path = run_dir / STATE_FILE_NAME
+        if state_path.exists():
+            raise FileExistsError(
+                f"pipeline_state.json already exists at {run_dir} — use resume()"
+            )
+        state = PipelineState(
+            run_id=run_id,
+            input_dir=str(input_dir),
+            url_list=list(url_list),
+            started=_utc_iso_now(),
+        )
+        pipeline = cls(run_dir=run_dir, state=state)
+        pipeline._save()
+        return pipeline
