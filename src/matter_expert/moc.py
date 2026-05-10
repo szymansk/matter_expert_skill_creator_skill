@@ -1,7 +1,7 @@
 """MOC (Map of Content) page domain model."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import Any
