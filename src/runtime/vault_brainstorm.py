@@ -93,8 +93,17 @@ def brainstorm(
 
     # Step 5: detect gaps.
     gaps: list[str] = []
-    if not relevant_concepts:
+    if located["strategy"] == "none":
         gaps.append(f"no match in vault for topic: '{topic}'")
+    elif not relevant_concepts and entry_concepts:
+        gaps.append(
+            f"topic matched vault entry but no connected concepts found: '{topic}'"
+        )
+    elif located["strategy"] == "moc_match" and not entry_concepts:
+        # MOC matched but has no children
+        gaps.append(
+            f"matched MOC for '{topic}' has no child concepts yet"
+        )
 
     # Step 6: entry questions for broad topics.
     entry_questions: list[str] = []

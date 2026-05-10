@@ -99,6 +99,30 @@ def test_brainstorm_proposes_entry_questions_for_broad_topic(
         assert len(result["entry_questions"]) >= 1
 
 
+def test_brainstorm_does_not_falsely_report_gap_when_topic_matched(
+    built_indexes, vault_dir: Path, memory_dir: Path
+):
+    """A topic that matches a MOC name should not produce a 'no match' gap,
+    even if the MOC's children list is empty."""
+    # The example vault's 'security' MOC has children=[] in its frontmatter.
+    # Edit the moc_map to confirm the empty case behaves correctly.
+    import json
+    moc_path = built_indexes.moc_map
+    mocs = json.loads(moc_path.read_text())
+    mocs["empty-moc"] = {"path": "MOCs/empty-moc.md", "children": [], "parents": []}
+    moc_path.write_text(json.dumps(mocs, indent=2, sort_keys=True))
+
+    result = brainstorm(
+        topic="empty-moc",
+        index_dir=built_indexes.index_dir,
+        vault_dir=vault_dir,
+        memory_dir=memory_dir,
+    )
+    assert result["strategy"] == "moc_match"
+    # Must NOT contain the false "no match" message
+    assert not any("no match in vault" in g for g in result["gaps"])
+
+
 def test_cli_outputs_json(built_indexes, vault_dir: Path, memory_dir: Path):
     result = subprocess.run(
         [
