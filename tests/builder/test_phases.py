@@ -53,6 +53,8 @@ def test_default_configs_match_design_spec():
     assert by_phase[Phase.TRANSFORM].effort == Effort.MEDIUM
     assert by_phase[Phase.LINK].model == Model.SONNET
     assert by_phase[Phase.LINK].effort == Effort.HIGH
+    assert by_phase[Phase.QA].model == Model.SONNET
+    assert by_phase[Phase.QA].effort == Effort.MEDIUM
     assert by_phase[Phase.EMIT].model == Model.SONNET
     assert by_phase[Phase.EMIT].effort == Effort.HIGH
 
