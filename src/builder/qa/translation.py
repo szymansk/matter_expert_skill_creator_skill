@@ -16,13 +16,18 @@ from matter_expert import ConceptPage, VaultPaths
 
 CODE_FENCE = re.compile(r"^```(?:json)?\s*\n(.+?)\n```\s*$", re.DOTALL)
 
+SAMPLE_MAX_TRANSLATION = 50          # spec §4.5: 5%, min 10, max 50
+DEFAULT_FAIL_THRESHOLD_PCT = 5.0     # spec §4.5: >5% → repeat translation phase
+
 
 class TranslationQualityValidator:
     name = "translation_quality"
 
-    def __init__(self, agent: AgentCaller, seed: int = 0) -> None:
+    def __init__(self, agent: AgentCaller, seed: int = 0,
+                 fail_threshold_pct: float = DEFAULT_FAIL_THRESHOLD_PCT) -> None:
         self._agent = agent
         self._seed = seed
+        self._fail_threshold_pct = fail_threshold_pct
 
     def validate(self, vault: VaultPaths) -> ValidatorResult:
         concepts = sorted(vault.concepts.glob("*.md"))
@@ -31,6 +36,7 @@ class TranslationQualityValidator:
             concepts,
             fraction=SAMPLE_FRACTION_TRANSLATION,
             minimum=SAMPLE_MIN_TRANSLATION,
+            maximum=SAMPLE_MAX_TRANSLATION,
             seed=self._seed,
         )
         issues: list[dict] = []
@@ -49,11 +55,30 @@ class TranslationQualityValidator:
                     "concept": page.path.stem,
                     "reasons": verdict.get("reasons", []),
                 })
-        severity = Severity.WARNING if issues else Severity.PASS
+
+        if not sample:
+            return ValidatorResult(
+                name=self.name, severity=Severity.PASS,
+                sampled=0, total=total, issues=[],
+                notes="no concepts to validate",
+            )
+
+        fail_rate_pct = (len(issues) / len(sample)) * 100
+        if fail_rate_pct > self._fail_threshold_pct:
+            severity = Severity.FAIL
+        elif issues:
+            severity = Severity.WARNING
+        else:
+            severity = Severity.PASS
+
         return ValidatorResult(
             name=self.name, severity=severity,
             sampled=len(sample), total=total, issues=issues,
-            notes=f"sampled {len(sample)} of {total}",
+            notes=(
+                f"sampled {len(sample)} of {total}; "
+                f"fail rate {fail_rate_pct:.1f}% "
+                f"(threshold {self._fail_threshold_pct}%)"
+            ),
         )
 
     def _read_source_excerpt(self, vault: VaultPaths, page: ConceptPage) -> str:
