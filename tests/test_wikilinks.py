@@ -43,3 +43,15 @@ def test_normalize_already_normalized_passthrough():
 
 def test_normalize_strips_whitespace():
     assert normalize_wikilink("  [[oauth2-flow]]  ") == "oauth2-flow"
+
+
+def test_normalize_strips_pipe_alias_with_brackets():
+    assert normalize_wikilink("[[oauth2-flow|OAuth 2.0]]") == "oauth2-flow"
+
+
+def test_normalize_strips_pipe_alias_without_brackets():
+    assert normalize_wikilink("oauth2-flow|OAuth 2.0") == "oauth2-flow"
+
+
+def test_normalize_strips_pipe_alias_with_whitespace():
+    assert normalize_wikilink("  [[oauth2-flow|OAuth 2.0]]  ") == "oauth2-flow"

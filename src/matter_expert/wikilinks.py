@@ -18,8 +18,10 @@ def extract_wikilinks(text: str) -> list[str]:
 
 
 def normalize_wikilink(raw: str) -> str:
-    """Strip whitespace and `[[` `]]` brackets from a wikilink target."""
+    """Strip whitespace, `[[` `]]` brackets, and `|alias` suffix from a wikilink target."""
     s = raw.strip()
     if s.startswith("[[") and s.endswith("]]"):
         s = s[2:-2].strip()
+    if "|" in s:
+        s = s.split("|", 1)[0].strip()
     return s
