@@ -13,9 +13,62 @@ from builder.qa.coherence import ConceptCoherenceValidator
 from builder.qa.coverage import CoverageValidator
 from builder.qa.integrity import VaultIntegrityValidator
 from builder.qa.link_resolution import LinkResolutionValidator
-from builder.qa.report import QAReport
+from builder.qa.report import QAReport, Severity, ValidatorResult
 from builder.qa.translation import TranslationQualityValidator
 from matter_expert import VaultPaths
+
+
+_VALIDATOR_RECOMMENDATIONS: dict[str, tuple[str, str]] = {
+    # validator_name -> (warning_message, fail_message)
+    "translation_quality": (
+        "Some translation issues detected — review flagged concepts and consider "
+        "selective re-translation via Transform phase (--retry-translation).",
+        "Translation fail rate exceeds 5% threshold — repeat the entire "
+        "translation phase (Phase 3) before proceeding.",
+    ),
+    "link_resolution": (
+        "Unresolved wikilinks or circular prerequisites detected — "
+        "re-run the Link phase to repair broken references.",
+        "Unresolved wikilinks or circular prerequisites detected — "
+        "re-run the Link phase to repair broken references.",
+    ),
+    "coverage": (
+        "Some source topics are not covered by extracted concepts — "
+        "re-run concept extraction for the missing areas in Transform phase.",
+        "Coverage gaps detected — re-run concept extraction for missing "
+        "topics in Transform phase.",
+    ),
+    "citation_accuracy": (
+        "Citation accuracy issues detected — review flagged concepts for "
+        "unsupported claims.",
+        "Citation fail rate exceeds 2% threshold — repeat the Transform "
+        "phase to regenerate concepts with stricter citation fidelity.",
+    ),
+    "concept_coherence": (
+        "Coherence issues detected — replay Transform for the affected concepts "
+        "to improve self-contained explanations.",
+        "Coherence issues detected — replay Transform for the affected concepts "
+        "to improve self-contained explanations.",
+    ),
+    "vault_integrity": (
+        "Vault integrity warnings — review structural issues before proceeding.",
+        "Vault integrity errors — fix missing required fields or directories "
+        "before generating the plugin.",
+    ),
+}
+
+
+def _build_recommendations(results: list[ValidatorResult]) -> list[str]:
+    """Derive actionable recommendations from validator results (spec §4.5)."""
+    recommendations: list[str] = []
+    for r in results:
+        if r.severity == Severity.PASS:
+            continue
+        warn_msg, fail_msg = _VALIDATOR_RECOMMENDATIONS.get(
+            r.name, (f"{r.name}: issues detected.", f"{r.name}: failures detected.")
+        )
+        recommendations.append(fail_msg if r.severity == Severity.FAIL else warn_msg)
+    return recommendations
 
 
 class _CostTrackingAgent:
@@ -77,6 +130,7 @@ class QAOrchestrator:
         report = QAReport(
             overall_status=QAReport.compute_overall(results),
             validators=results,
+            recommendations=_build_recommendations(results),
         )
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(
