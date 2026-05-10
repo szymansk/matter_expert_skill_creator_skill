@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from builder.phases import Phase
-from builder.state import PipelineState
+from builder.state import ItemState, PhaseState, PipelineState
 
 
 STATE_FILE_NAME = "pipeline_state.json"
@@ -114,7 +114,6 @@ class Pipeline:
         **metadata: Any,
     ) -> None:
         """Record or update the state of a single item within a phase."""
-        from builder.state import ItemState
         ps = self._state.phases[phase.value]
         existing = ps.items.get(item_id, ItemState())
         existing.status = status
@@ -158,7 +157,6 @@ class Pipeline:
         untouched. The aggregate `actual_so_far_usd` is recomputed
         from the surviving per-phase totals.
         """
-        from builder.state import PhaseState
         phases_in_order = list(Phase)
         target_index = phases_in_order.index(phase)
 
