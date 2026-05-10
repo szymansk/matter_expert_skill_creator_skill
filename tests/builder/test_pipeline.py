@@ -130,6 +130,19 @@ def test_mark_phase_failed_records_error(run_dir: Path):
     assert phase_state.error == "model unavailable"
 
 
+def test_mark_phase_failed_without_started_works(run_dir: Path):
+    """A phase can fail without having been started — e.g., precondition fails."""
+    pipeline = Pipeline.create(
+        run_id="x", input_dir=Path("/tmp"), url_list=[], run_dir=run_dir,
+    )
+    pipeline.mark_phase_failed(Phase.INGEST, error="prereq missing")
+    ps = pipeline.state.phases["ingest"]
+    assert ps.status == "failed"
+    assert ps.error == "prereq missing"
+    assert ps.started_at is None  # never started
+    assert ps.completed_at is not None  # but a fail timestamp is recorded
+
+
 def test_mark_phase_failed_does_not_collide_with_item_id(run_dir: Path):
     """A phase impl using item_id='_phase' must not be affected by mark_phase_failed."""
     pipeline = Pipeline.create(
