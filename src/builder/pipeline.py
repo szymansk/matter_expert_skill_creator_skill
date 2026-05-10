@@ -155,3 +155,24 @@ class Pipeline:
             if not self.is_phase_complete(phase):
                 return phase
         return None
+
+    def replay_from(self, phase: Phase) -> None:
+        """Reset the given phase and all later phases to pending.
+
+        Clears their items and per-phase costs. Earlier phases are
+        untouched. The aggregate `actual_so_far_usd` is recomputed
+        from the surviving per-phase totals.
+        """
+        from builder.state import PhaseState
+        phases_in_order = list(Phase)
+        target_index = phases_in_order.index(phase)
+
+        for later in phases_in_order[target_index:]:
+            name = later.value
+            self._state.phases[name] = PhaseState(name=name)
+            self._state.cost_tracker["per_phase"].pop(name, None)
+
+        self._state.cost_tracker["actual_so_far_usd"] = round(
+            sum(self._state.cost_tracker["per_phase"].values()), 10
+        )
+        self._save()

@@ -274,3 +274,77 @@ def test_next_pending_phase_returns_none_when_all_done(run_dir: Path):
         pipeline.mark_phase_completed(phase)
 
     assert pipeline.next_pending_phase() is None
+
+
+def test_replay_from_resets_target_phase(run_dir: Path):
+    pipeline = Pipeline.create(
+        run_id="x", input_dir=Path("/tmp"), url_list=[], run_dir=run_dir,
+    )
+    pipeline.mark_phase_started(Phase.INGEST)
+    pipeline.mark_phase_completed(Phase.INGEST)
+    pipeline.mark_phase_started(Phase.TRANSFORM)
+    pipeline.mark_phase_completed(Phase.TRANSFORM)
+
+    pipeline.replay_from(Phase.TRANSFORM)
+
+    assert pipeline.state.phases["transform"].status == "pending"
+    assert pipeline.state.phases["transform"].started_at is None
+    assert pipeline.state.phases["transform"].completed_at is None
+
+
+def test_replay_from_resets_all_later_phases(run_dir: Path):
+    pipeline = Pipeline.create(
+        run_id="x", input_dir=Path("/tmp"), url_list=[], run_dir=run_dir,
+    )
+    for phase in Phase:
+        pipeline.mark_phase_started(phase)
+        pipeline.mark_phase_completed(phase)
+
+    pipeline.replay_from(Phase.LINK)
+
+    assert pipeline.state.phases["link"].status == "pending"
+    assert pipeline.state.phases["qa"].status == "pending"
+    assert pipeline.state.phases["emit"].status == "pending"
+    assert pipeline.state.phases["ingest"].status == "completed"
+    assert pipeline.state.phases["transform"].status == "completed"
+
+
+def test_replay_from_clears_items_in_reset_phases(run_dir: Path):
+    pipeline = Pipeline.create(
+        run_id="x", input_dir=Path("/tmp"), url_list=[], run_dir=run_dir,
+    )
+    pipeline.record_item(Phase.LINK, "concept-a", status="done")
+    pipeline.record_item(Phase.LINK, "concept-b", status="done")
+
+    pipeline.replay_from(Phase.LINK)
+
+    assert pipeline.state.phases["link"].items == {}
+
+
+def test_replay_from_clears_costs_for_reset_phases(run_dir: Path):
+    pipeline = Pipeline.create(
+        run_id="x", input_dir=Path("/tmp"), url_list=[], run_dir=run_dir,
+    )
+    pipeline.record_cost(Phase.INGEST, 0.40)
+    pipeline.record_cost(Phase.TRANSFORM, 4.20)
+    pipeline.record_cost(Phase.LINK, 1.80)
+
+    pipeline.replay_from(Phase.LINK)
+
+    assert "link" not in pipeline.state.cost_tracker["per_phase"]
+    assert pipeline.state.cost_tracker["per_phase"]["ingest"] == 0.40
+    assert pipeline.state.cost_tracker["per_phase"]["transform"] == 4.20
+    assert pipeline.state.cost_tracker["actual_so_far_usd"] == 4.60
+
+
+def test_replay_from_persists_to_disk(run_dir: Path):
+    pipeline = Pipeline.create(
+        run_id="x", input_dir=Path("/tmp"), url_list=[], run_dir=run_dir,
+    )
+    pipeline.mark_phase_started(Phase.INGEST)
+    pipeline.mark_phase_completed(Phase.INGEST)
+
+    pipeline.replay_from(Phase.INGEST)
+
+    reloaded = Pipeline.resume(run_dir)
+    assert reloaded.state.phases["ingest"].status == "pending"
