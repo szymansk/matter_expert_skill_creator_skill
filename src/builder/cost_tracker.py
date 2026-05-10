@@ -14,7 +14,9 @@ from builder.phases import Model, Phase
 CACHED_INPUT_DISCOUNT = 0.10  # cached input tokens cost 10% of normal
 
 
-# Per-million-token prices in USD.
+# Anthropic per-million-token prices, USD. Reference values as of 2026-05-10.
+# Update when Anthropic publishes new pricing.
+# Source: https://docs.anthropic.com/en/docs/about-claude/pricing
 MODEL_PRICES_USD_PER_MILLION: dict[Model, dict[str, float]] = {
     Model.HAIKU: {"input": 1.0, "output": 5.0},
     Model.SONNET: {"input": 3.0, "output": 15.0},
