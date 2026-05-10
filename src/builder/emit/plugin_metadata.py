@@ -17,7 +17,13 @@ class PluginMetadata:
 
 
 def write_plugin_json(meta: PluginMetadata, plugin_root: Path) -> Path:
-    """Write `<plugin_root>/.claude-plugin/plugin.json` and return its path."""
+    """Write `<plugin_root>/.claude-plugin/plugin.json` and return its path.
+
+    The ``author`` field is written as ``{"name": "..."}`` (object form) to
+    match the Claude Code plugin manifest schema.  The ``skills`` key points
+    to ``./skills`` so Claude Code auto-discovers all ``skills/*/SKILL.md``
+    files on install.
+    """
     plugin_dir = plugin_root / ".claude-plugin"
     plugin_dir.mkdir(parents=True, exist_ok=True)
     path = plugin_dir / "plugin.json"
@@ -25,8 +31,9 @@ def write_plugin_json(meta: PluginMetadata, plugin_root: Path) -> Path:
         "name": meta.name,
         "version": meta.version,
         "description": meta.description,
-        "author": meta.author,
+        "author": {"name": meta.author},
         "license": meta.license,
+        "skills": "./skills",
     }
     if meta.homepage:
         data["homepage"] = meta.homepage

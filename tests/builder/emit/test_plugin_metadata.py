@@ -38,5 +38,18 @@ def test_write_plugin_json_includes_skill_entry(tmp_path: Path):
     data = json.loads(
         (plugin_root / ".claude-plugin" / "plugin.json").read_text()
     )
-    # Must declare the bundled skill so Claude Code can auto-discover it.
-    assert "skills" in data or data["name"]  # at minimum, name present
+    # Must declare the skills directory so Claude Code auto-discovers SKILL.md files.
+    assert data["skills"] == "./skills"
+
+
+def test_write_plugin_json_author_is_object(tmp_path: Path):
+    """author must be an object {name: ...} matching the Claude Code manifest schema."""
+    meta = PluginMetadata(name="x", version="0.1.0", description="d", author="alice")
+    plugin_root = tmp_path / "plugin"
+    plugin_root.mkdir()
+    write_plugin_json(meta, plugin_root)
+    data = json.loads(
+        (plugin_root / ".claude-plugin" / "plugin.json").read_text()
+    )
+    assert isinstance(data["author"], dict)
+    assert data["author"]["name"] == "alice"
