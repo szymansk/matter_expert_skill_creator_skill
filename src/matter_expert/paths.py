@@ -24,6 +24,9 @@ class VaultPaths:
 
     root: Path
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "root", self.root.resolve())
+
     @property
     def concepts(self) -> Path:
         return self.root / "concepts"
