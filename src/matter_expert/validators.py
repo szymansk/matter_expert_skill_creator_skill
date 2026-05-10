@@ -79,3 +79,63 @@ def validate_concept_frontmatter(
             ))
 
     return issues
+
+
+def resolve_wikilinks(
+    fm: ConceptFrontmatter,
+    known_concepts: set[str],
+    concept_name: str,
+) -> list[ValidationIssue]:
+    """Verify every wikilink target in a concept's typed-link lists exists.
+
+    Each broken target produces one issue, even if it appears multiple times
+    across different link types.
+    """
+    all_targets = set(fm.related) | set(fm.prerequisites) | set(fm.examples) \
+                  | set(fm.contrasts) | set(fm.refines)
+    broken = sorted(all_targets - known_concepts)
+    return [
+        ValidationIssue(
+            Severity.ERROR,
+            f"unresolved wikilink: '{target}' is not a known concept",
+            concept_name,
+        )
+        for target in broken
+    ]
+
+
+def detect_circular_prerequisites(
+    concepts: dict[str, ConceptFrontmatter],
+) -> list[ValidationIssue]:
+    """Detect circular prerequisite chains (A → B → A or longer cycles)."""
+    issues: list[ValidationIssue] = []
+    visited: set[str] = set()
+
+    def dfs(node: str, stack: list[str]) -> None:
+        if node in stack:
+            cycle = " → ".join(stack[stack.index(node):] + [node])
+            issues.append(ValidationIssue(
+                Severity.ERROR,
+                f"circular prerequisite chain: {cycle}",
+                node,
+            ))
+            return
+        if node in visited:
+            return
+        visited.add(node)
+        if node in concepts:
+            for prereq in concepts[node].prerequisites:
+                dfs(prereq, stack + [node])
+
+    for name in concepts:
+        dfs(name, [])
+
+    # Deduplicate (same cycle may be reported from multiple entry points)
+    seen: set[str] = set()
+    unique_issues: list[ValidationIssue] = []
+    for issue in issues:
+        key = issue.message
+        if key not in seen:
+            seen.add(key)
+            unique_issues.append(issue)
+    return unique_issues
