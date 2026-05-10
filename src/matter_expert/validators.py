@@ -139,3 +139,73 @@ def detect_circular_prerequisites(
             seen.add(key)
             unique_issues.append(issue)
     return unique_issues
+
+
+from matter_expert.concept import ConceptPage
+from matter_expert.paths import VaultPaths
+
+
+def validate_vault(paths: VaultPaths) -> list[ValidationIssue]:
+    """Validate a vault end-to-end.
+
+    Checks:
+    - Required directories exist (concepts/, MOCs/, sources/)
+    - Each concept page parses successfully
+    - Each concept's frontmatter is structurally valid
+    - All wikilinks in concept frontmatter resolve to existing concepts
+    - No circular prerequisite chains
+    """
+    issues: list[ValidationIssue] = []
+
+    # Required directories
+    for label, directory in [
+        ("concepts", paths.concepts),
+        ("MOCs", paths.mocs),
+        ("sources", paths.sources),
+    ]:
+        if not directory.exists():
+            issues.append(ValidationIssue(
+                Severity.ERROR,
+                f"required directory '{label}' is missing at {directory}",
+                str(paths.root),
+            ))
+
+    if not paths.concepts.exists():
+        return issues  # Can't continue without concepts dir
+
+    # Load all concepts
+    concepts: dict[str, ConceptPage] = {}
+    for path in sorted(paths.concepts.rglob("*.md")):
+        try:
+            page = ConceptPage.read(path)
+            concepts[page.name] = page
+        except Exception as e:
+            issues.append(ValidationIssue(
+                Severity.ERROR,
+                f"failed to parse concept: {e}",
+                str(path.relative_to(paths.root)),
+            ))
+
+    if not concepts:
+        issues.append(ValidationIssue(
+            Severity.WARNING,
+            "vault has no concepts",
+            str(paths.root),
+        ))
+        return issues
+
+    # Per-concept structural validation
+    for name, page in concepts.items():
+        issues.extend(validate_concept_frontmatter(page.frontmatter, concept_name=name))
+
+    # Wikilink resolution across concepts
+    known = set(concepts.keys())
+    for name, page in concepts.items():
+        issues.extend(resolve_wikilinks(page.frontmatter, known, concept_name=name))
+
+    # Circular prerequisites
+    issues.extend(detect_circular_prerequisites(
+        {name: page.frontmatter for name, page in concepts.items()}
+    ))
+
+    return issues

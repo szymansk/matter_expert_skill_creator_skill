@@ -160,3 +160,84 @@ def test_no_circular_prerequisites_when_dag():
 
     issues = detect_circular_prerequisites(concepts)
     assert issues == []
+
+
+from pathlib import Path
+from matter_expert.paths import VaultPaths
+from matter_expert.validators import validate_vault
+
+
+def test_validate_empty_vault_warns(tmp_path: Path):
+    """An empty vault directory is structurally valid but warns about no concepts."""
+    vault_root = tmp_path / "vault"
+    paths = VaultPaths(root=vault_root)
+    paths.concepts.mkdir(parents=True)
+    paths.mocs.mkdir()
+    paths.sources.mkdir()
+
+    issues = validate_vault(paths)
+    assert any(i.severity == Severity.WARNING and "no concepts" in i.message.lower()
+               for i in issues)
+
+
+def test_validate_missing_required_directory_errors(tmp_path: Path):
+    """Missing concepts/ or MOCs/ or sources/ is an error."""
+    vault_root = tmp_path / "vault"
+    paths = VaultPaths(root=vault_root)
+    paths.concepts.mkdir(parents=True)
+    # MOCs and sources missing on purpose
+
+    issues = validate_vault(paths)
+    error_msgs = [i.message for i in issues if i.severity == Severity.ERROR]
+    assert any("MOCs" in m for m in error_msgs)
+    assert any("sources" in m for m in error_msgs)
+
+
+def test_validate_complete_minimal_vault(tmp_path: Path):
+    """A vault with one valid concept passes integrity validation."""
+    from matter_expert.concept import ConceptFrontmatter, ConceptPage, Source
+
+    vault_root = tmp_path / "vault"
+    paths = VaultPaths(root=vault_root)
+    paths.concepts.mkdir(parents=True)
+    paths.mocs.mkdir()
+    paths.sources.mkdir()
+
+    fm = ConceptFrontmatter(
+        title="Concept A",
+        sources=[Source(file="a.md", sections=[])],
+        tags=["topic"],
+        created=date(2026, 5, 10),
+    )
+    page = ConceptPage(frontmatter=fm, body="Body.", path=paths.concept_for("concept-a"))
+    page.write()
+
+    issues = validate_vault(paths)
+    assert all(i.severity != Severity.ERROR for i in issues)
+
+
+def test_validate_detects_broken_wikilink_in_vault(tmp_path: Path):
+    from matter_expert.concept import ConceptFrontmatter, ConceptPage, Source
+
+    vault_root = tmp_path / "vault"
+    paths = VaultPaths(root=vault_root)
+    paths.concepts.mkdir(parents=True)
+    paths.mocs.mkdir()
+    paths.sources.mkdir()
+
+    fm = ConceptFrontmatter(
+        title="A",
+        sources=[Source(file="a.md", sections=[])],
+        tags=[],
+        created=date(2026, 5, 10),
+        related=["does-not-exist"],
+    )
+    ConceptPage(
+        frontmatter=fm, body="Body.", path=paths.concept_for("a")
+    ).write()
+
+    issues = validate_vault(paths)
+    assert any(
+        i.severity == Severity.ERROR and "does-not-exist" in i.message
+        for i in issues
+    )
