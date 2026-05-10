@@ -77,6 +77,43 @@ def test_update_with_user_language_records_preference(memory_dir: Path):
     assert prefs["response_language"] == "de"
 
 
+def test_update_evicts_entries_older_than_ttl(memory_dir: Path):
+    """Entries older than QUERY_CACHE_TTL_DAYS should be evicted."""
+    from runtime.memory_update import QUERY_CACHE_TTL_DAYS
+    import datetime as dt
+
+    # Build cache with one fresh and one ancient entry.
+    very_old = (
+        dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=QUERY_CACHE_TTL_DAYS + 5)
+    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    fresh = (
+        dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=1)
+    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    save_query_cache(memory_dir / "query_cache.json", {
+        "ancient": {"matched_concepts": ["x"], "last_used": very_old, "use_count": 1, "user_satisfied": True},
+        "recent": {"matched_concepts": ["y"], "last_used": fresh, "use_count": 1, "user_satisfied": True},
+    })
+
+    update_memory(memory_dir=memory_dir, query="new", used_concepts=["z"])
+
+    after = load_query_cache(memory_dir / "query_cache.json")
+    assert "ancient" not in after
+    assert "recent" in after
+    assert "new" in after
+
+
+def test_update_keeps_entries_with_missing_last_used(memory_dir: Path):
+    """Entries with no last_used field are NOT evicted (defensive)."""
+    save_query_cache(memory_dir / "query_cache.json", {
+        "no-timestamp": {"matched_concepts": ["x"], "use_count": 1, "user_satisfied": True},
+    })
+
+    update_memory(memory_dir=memory_dir, query="new", used_concepts=["z"])
+
+    after = load_query_cache(memory_dir / "query_cache.json")
+    assert "no-timestamp" in after
+
+
 def test_cli_runs(memory_dir: Path):
     result = subprocess.run(
         [

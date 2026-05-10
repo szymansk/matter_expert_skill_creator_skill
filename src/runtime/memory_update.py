@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from runtime.memory import (
@@ -22,6 +22,24 @@ from runtime.memory import (
 )
 
 QUERY_CACHE_MAX_ENTRIES = 100
+QUERY_CACHE_TTL_DAYS = 30
+
+
+def _evict_expired(cache: dict, now: datetime, ttl_days: int) -> dict:
+    """Drop cache entries whose last_used is older than ttl_days from now.
+
+    Entries with malformed/missing last_used are kept (defensive — don't
+    drop entries we can't reason about).
+    """
+    cutoff = now - timedelta(days=ttl_days)
+    cutoff_iso = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
+    fresh: dict = {}
+    for key, info in cache.items():
+        last_used = info.get("last_used", "")
+        if last_used and last_used < cutoff_iso:
+            continue  # expired, drop
+        fresh[key] = info
+    return fresh
 
 
 def update_memory(
@@ -32,10 +50,14 @@ def update_memory(
 ) -> None:
     """Apply a query's results to mutable memory."""
     paths = MemoryPaths(memory_dir=memory_dir)
-    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = datetime.now(timezone.utc)
+    now_iso = now.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    # 1. Update query_cache (with LRU eviction).
+    # 1. Update query_cache (with TTL and LRU eviction).
     cache = load_query_cache(paths.query_cache)
+
+    # Evict TTL-expired entries first.
+    cache = _evict_expired(cache, now, QUERY_CACHE_TTL_DAYS)
     if query in cache:
         cache[query]["use_count"] = cache[query].get("use_count", 0) + 1
         cache[query]["last_used"] = now_iso
