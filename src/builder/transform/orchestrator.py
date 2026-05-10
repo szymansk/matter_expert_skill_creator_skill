@@ -1,6 +1,7 @@
 """Transform orchestrator — runs analyzer → extractor → coverage per source doc."""
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -19,6 +20,24 @@ from matter_expert import (
     SourcePage,
     VaultPaths,
 )
+
+_SLUG_UNSAFE = re.compile(r"[^a-z0-9-]+")
+
+
+def _slugify(text: str) -> str:
+    """Convert arbitrary text to a safe kebab-case filename stem."""
+    lowered = text.lower()
+    return _SLUG_UNSAFE.sub("-", lowered).strip("-") or "source"
+
+
+def _unique_name(base: str, seen: set[str]) -> str:
+    """Return `base` if unseen, else `base--2`, `base--3`, … until unique."""
+    if base not in seen:
+        return base
+    counter = 2
+    while f"{base}--{counter}" in seen:
+        counter += 1
+    return f"{base}--{counter}"
 
 
 class TransformOrchestrator:
@@ -46,9 +65,16 @@ class TransformOrchestrator:
         self._paths.concepts.mkdir(parents=True, exist_ok=True)
         self._paths.sources.mkdir(parents=True, exist_ok=True)
 
+        # Track written names across all source documents to detect collisions.
+        seen_concept_names: set[str] = set()
+        seen_source_stems: set[str] = set()
+
         for source_id, convert_result in ingest_results.items():
             try:
-                concepts = self._transform_one(source_id, convert_result, pipeline)
+                concepts = self._transform_one(
+                    source_id, convert_result, pipeline,
+                    seen_concept_names, seen_source_stems,
+                )
             except Exception as e:
                 pipeline.record_item(
                     Phase.TRANSFORM, source_id,
@@ -68,6 +94,8 @@ class TransformOrchestrator:
         source_id: str,
         convert: ConvertResult,
         pipeline: Pipeline,
+        seen_concept_names: set[str],
+        seen_source_stems: set[str],
     ) -> list[str]:
         # 1. Analyze
         outline, usage = self._analyzer.analyze(
@@ -76,8 +104,8 @@ class TransformOrchestrator:
         )
         self._record_cost(pipeline, usage)
 
-        # 2. Write the source page
-        self._write_source_page(source_id, convert)
+        # 2. Write the source page (deduplicated stem)
+        self._write_source_page(source_id, convert, seen_source_stems)
 
         # 3. Extract each concept
         concept_names: list[str] = []
@@ -90,8 +118,10 @@ class TransformOrchestrator:
                 concept_title=entry.title,
             )
             self._record_cost(pipeline, ex_usage)
-            self._write_concept_page(entry, body, convert, source_id)
-            concept_names.append(entry.concept_name)
+            written_name = self._write_concept_page(
+                entry, body, convert, source_id, seen_concept_names,
+            )
+            concept_names.append(written_name)
             extracted_titles.append(entry.title)
 
         # 4. Coverage check
@@ -118,7 +148,14 @@ class TransformOrchestrator:
         body: str,
         convert: ConvertResult,
         source_id: str,
-    ) -> None:
+        seen_concept_names: set[str],
+    ) -> str:
+        """Write concept page, disambiguating name if collision exists.
+
+        Returns the actual concept name written (may differ from entry.concept_name).
+        """
+        written_name = _unique_name(entry.concept_name, seen_concept_names)
+        seen_concept_names.add(written_name)
         fm = ConceptFrontmatter(
             title=entry.title,
             sources=[Source(file=source_id, sections=list(entry.source_sections))],
@@ -128,13 +165,26 @@ class TransformOrchestrator:
         page = ConceptPage(
             frontmatter=fm,
             body=body,
-            path=self._paths.concept_for(entry.concept_name),
+            path=self._paths.concept_for(written_name),
         )
         page.write()
+        return written_name
 
-    def _write_source_page(self, source_id: str, convert: ConvertResult) -> None:
-        """Mirror the original ingest output under vault/sources/."""
-        stem = Path(source_id).stem
+    def _write_source_page(
+        self,
+        source_id: str,
+        convert: ConvertResult,
+        seen_source_stems: set[str],
+    ) -> None:
+        """Mirror the original ingest output under vault/sources/.
+
+        The page stem is derived from the source_id's final path component.
+        When two source_ids share the same stem (e.g. two URLs ending in /auth),
+        the second is written with a disambiguating suffix (--2, --3, …).
+        """
+        base_stem = _slugify(Path(source_id).stem)
+        stem = _unique_name(base_stem, seen_source_stems)
+        seen_source_stems.add(stem)
         # Map ingest extraction_method to source page's extraction_method literal
         method = convert.meta.extraction_method.value
         # Some methods aren't part of SourceFrontmatter's Literal — coerce.

@@ -106,3 +106,73 @@ def test_orchestrator_writes_source_pages(
     source_path = vault_dir / "sources" / "doc1.md"
     assert source_path.exists()
     assert "original body" in source_path.read_text(encoding="utf-8")
+
+
+def test_orchestrator_disambiguates_colliding_concept_names(
+    canned_agent, tmp_path, run_dir,
+):
+    """Two docs that produce the same concept name get distinct filenames."""
+    canned_agent.recipes["Identify"] = json.dumps({"entries": [
+        {"concept_name": "shared-concept", "title": "Shared Concept",
+         "source_sections": [], "estimated_tokens": 800},
+    ]})
+    canned_agent.recipes["Target concept"] = "# Shared Concept\n\nBody.\n"
+    canned_agent.recipes["Source outline"] = json.dumps({"missed_topics": []})
+
+    vault_dir = tmp_path / "vault"
+    pipeline = Pipeline.create(
+        run_id="x", input_dir=Path("/tmp"), url_list=[], run_dir=run_dir,
+    )
+    orch = TransformOrchestrator(agent=canned_agent, vault_dir=vault_dir)
+
+    results = orch.transform(
+        ingest_results={
+            "doc1.md": _convert_result("doc1.md"),
+            "doc2.md": _convert_result("doc2.md"),
+        },
+        pipeline=pipeline,
+    )
+
+    # Both docs were processed successfully.
+    assert "doc1.md" in results
+    assert "doc2.md" in results
+
+    # Concept names returned are distinct (second is disambiguated).
+    doc1_concepts = results["doc1.md"]
+    doc2_concepts = results["doc2.md"]
+    assert doc1_concepts == ["shared-concept"]
+    assert doc2_concepts == ["shared-concept--2"]
+
+    # Both concept files exist on disk.
+    assert (vault_dir / "concepts" / "shared-concept.md").exists()
+    assert (vault_dir / "concepts" / "shared-concept--2.md").exists()
+
+
+def test_orchestrator_disambiguates_colliding_source_stems(
+    canned_agent, tmp_path, run_dir,
+):
+    """Two source_ids that share the same stem get distinct source page names."""
+    canned_agent.recipes["Identify"] = json.dumps({"entries": []})
+    canned_agent.recipes["Source outline"] = json.dumps({"missed_topics": []})
+
+    vault_dir = tmp_path / "vault"
+    pipeline = Pipeline.create(
+        run_id="x", input_dir=Path("/tmp"), url_list=[], run_dir=run_dir,
+    )
+    orch = TransformOrchestrator(agent=canned_agent, vault_dir=vault_dir)
+
+    # Two source_ids that share stem "auth" — simulates two URLs with same endpoint name.
+    orch.transform(
+        ingest_results={
+            "https://example.com/auth": _convert_result("https://example.com/auth", content="body A"),
+            "https://other.com/auth": _convert_result("https://other.com/auth", content="body B"),
+        },
+        pipeline=pipeline,
+    )
+
+    # Both source pages exist on disk with distinct names.
+    assert (vault_dir / "sources" / "auth.md").exists()
+    assert (vault_dir / "sources" / "auth--2.md").exists()
+    # Content is distinct (not silently overwritten).
+    assert "body A" in (vault_dir / "sources" / "auth.md").read_text(encoding="utf-8")
+    assert "body B" in (vault_dir / "sources" / "auth--2.md").read_text(encoding="utf-8")
