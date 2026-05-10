@@ -1,0 +1,6 @@
+A plain text document.
+
+It has multiple paragraphs.
+Some sentences span lines.
+
+That's all.
