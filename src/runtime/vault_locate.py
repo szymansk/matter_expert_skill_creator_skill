@@ -15,6 +15,15 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# When this script is executed directly from a bundled plugin the runtime/
+# directory sits inside scripts/.  Add scripts/ to sys.path so that
+# `from runtime.xxx import` resolves regardless of the working directory.
+_HERE = Path(__file__).resolve().parent
+if _HERE.name == "runtime":
+    _scripts = _HERE.parent
+    if str(_scripts) not in sys.path:
+        sys.path.insert(0, str(_scripts))
+
 from runtime.index import IndexPaths, load_alias_map, load_moc_map
 from runtime.memory import (
     MemoryPaths,

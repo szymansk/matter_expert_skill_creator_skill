@@ -81,9 +81,9 @@ def test_orchestrator_produces_full_plugin_structure(
     assert (skill / "_index" / "moc_map.json").exists()
     assert (skill / "_index" / "link_graph.json").exists()
     assert (skill / "_index" / "alias_map.json").exists()
-    # Bundled runtime
-    assert (skill / "scripts" / "vault_locate.py").exists()
-    assert (skill / "scripts" / "vault_brainstorm.py").exists()
+    # Bundled runtime (preserved as scripts/runtime/ package)
+    assert (skill / "scripts" / "runtime" / "vault_locate.py").exists()
+    assert (skill / "scripts" / "runtime" / "vault_brainstorm.py").exists()
     # Initial memory
     assert (skill / "memory" / "query_cache.json").exists()
     assert (skill / "memory" / "user_preferences.json").exists()
@@ -122,3 +122,30 @@ def test_orchestrator_records_cost_for_skill_md(
     )
     orch.emit(vault=vault_paths, plugin_root=plugin_root, pipeline=pipeline)
     assert pipeline.state.cost_tracker["per_phase"].get("emit", 0) > 0
+
+
+def test_emit_is_idempotent(tmp_path: Path, canned_agent, run_dir):
+    """Calling emit() twice into the same plugin_root must not raise."""
+    vault_paths = _build_vault(tmp_path / "vault")
+    plugin_root = tmp_path / "out_plugin"
+    cfg = EmitConfig(plugin_name="idempotent-expert", plugin_version="0.1.0",
+                     plugin_description="d", author="a")
+
+    pipeline1 = Pipeline.create(
+        run_id="x1", input_dir=Path("/tmp"), url_list=[], run_dir=run_dir,
+    )
+    orch = EmitOrchestrator(agent=canned_agent, config=cfg)
+    orch.emit(vault=vault_paths, plugin_root=plugin_root, pipeline=pipeline1)
+
+    # Second emit into the same plugin_root — must overwrite cleanly.
+    run_dir2 = tmp_path / "run2"
+    run_dir2.mkdir()
+    pipeline2 = Pipeline.create(
+        run_id="x2", input_dir=Path("/tmp"), url_list=[], run_dir=run_dir2,
+    )
+    orch.emit(vault=vault_paths, plugin_root=plugin_root, pipeline=pipeline2)
+
+    skill = plugin_root / "skills" / "idempotent-expert"
+    assert (skill / "scripts" / "runtime" / "vault_locate.py").exists()
+    assert (skill / "_index" / "concept_index.json").exists()
+    assert (skill / "memory" / "query_cache.json").exists()

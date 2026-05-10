@@ -27,17 +27,17 @@ of curated knowledge bundled in this plugin.
 
 ## When the user asks a question (Q&A mode)
 
-1. Run `scripts/vault_locate.py` with the user's query to find entry points.
-2. If needed, run `scripts/vault_search.py` for keyword search.
-3. Run `scripts/vault_traverse.py` to expand the context via typed links.
+1. Run `scripts/runtime/vault_locate.py` with the user's query to find entry points.
+2. If needed, run `scripts/runtime/vault_search.py` for keyword search.
+3. Run `scripts/runtime/vault_traverse.py` to expand the context via typed links.
 4. Read the identified concept pages from `vault/concepts/`.
 5. Synthesize the answer with explicit citations using the citation format below.
-6. After answering, run `scripts/memory_update.py` to record what was used.
+6. After answering, run `scripts/runtime/memory_update.py` to record what was used.
 
 ## When the user wants to brainstorm
 
 1. Detect brainstorming intent (hypothetical, "what if", "options for", etc.).
-2. Run `scripts/vault_brainstorm.py` for the topic — get a hypothesis scaffold.
+2. Run `scripts/runtime/vault_brainstorm.py` for the topic — get a hypothesis scaffold.
 3. Present hypotheses with confidence levels, sources, assumptions,
    and falsification criteria.
 4. Make vault gaps (🔍) and source contradictions (⚠️) explicit.

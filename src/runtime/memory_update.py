@@ -11,6 +11,15 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+# When this script is executed directly from a bundled plugin the runtime/
+# directory sits inside scripts/.  Add scripts/ to sys.path so that
+# `from runtime.xxx import` resolves regardless of the working directory.
+_HERE = Path(__file__).resolve().parent
+if _HERE.name == "runtime":
+    _scripts = _HERE.parent
+    if str(_scripts) not in sys.path:
+        sys.path.insert(0, str(_scripts))
+
 from runtime.memory import (
     MemoryPaths,
     load_path_frequency,

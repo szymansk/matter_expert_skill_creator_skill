@@ -44,3 +44,27 @@ def test_skill_md_includes_workflow_sections(tmp_path: Path, canned_agent):
     assert "Q&A" in content or "answer" in content.lower()
     assert "brainstorm" in content.lower()
     assert "citation" in content.lower() or "source" in content.lower()
+
+
+def test_skill_md_references_correct_script_paths(tmp_path: Path, canned_agent):
+    """SKILL.md must reference scripts/runtime/ not scripts/ directly.
+
+    Runtime scripts live at scripts/runtime/<name>.py after bundling so that
+    ``from runtime.xxx import`` resolves correctly.
+    """
+    skill_dir = tmp_path / "skills" / "x"
+    skill_dir.mkdir(parents=True)
+    path = generate_skill_md(
+        skill_dir=skill_dir,
+        meta=SkillMdMeta(skill_name="x", dominant_topics=["auth"]),
+        agent=canned_agent,
+    )
+    content = path.read_text(encoding="utf-8")
+    # Must reference the scripts/runtime/ subpackage, not flat scripts/
+    assert "scripts/runtime/vault_locate.py" in content
+    assert "scripts/runtime/vault_search.py" in content
+    assert "scripts/runtime/memory_update.py" in content
+    assert "scripts/runtime/vault_brainstorm.py" in content
+    # Must NOT reference the old flat paths
+    assert "scripts/vault_locate.py" not in content
+    assert "scripts/vault_brainstorm.py" not in content

@@ -18,9 +18,15 @@ def _find_runtime_source() -> Path:
 
 
 def bundle_runtime(plugin_skill_dir: Path) -> Path:
-    """Copy runtime/*.py into `<plugin_skill_dir>/scripts/`.
+    """Copy the runtime package into `<plugin_skill_dir>/scripts/runtime/`.
 
-    Returns the scripts directory path. Excludes __pycache__ and *.pyc.
+    The runtime scripts import each other as ``from runtime.xxx import ...``.
+    Preserving the ``runtime/`` package directory under ``scripts/`` keeps those
+    imports resolvable when Python is invoked from any working directory:
+    the per-script sys.path bootstrap (see each runtime module) adds
+    ``scripts/`` to ``sys.path``, making ``import runtime`` resolve correctly.
+
+    Returns the scripts/ directory path. Excludes __pycache__ and *.pyc.
     """
     runtime_src = _find_runtime_source()
     scripts = plugin_skill_dir / "scripts"
@@ -29,14 +35,11 @@ def bundle_runtime(plugin_skill_dir: Path) -> Path:
     def _ignore(_dir: str, names: list[str]) -> list[str]:
         return [n for n in names if n == "__pycache__" or n.endswith(".pyc")]
 
-    for item in runtime_src.iterdir():
-        if item.name in {"__pycache__"}:
-            continue
-        if item.is_dir():
-            shutil.copytree(
-                item, scripts / item.name,
-                dirs_exist_ok=True, ignore=_ignore,
-            )
-        else:
-            shutil.copy2(item, scripts / item.name)
+    # Copy the entire runtime/ tree as scripts/runtime/ so that
+    # `from runtime.index import ...` resolves when scripts/ is on sys.path.
+    dest_runtime = scripts / "runtime"
+    shutil.copytree(
+        runtime_src, dest_runtime,
+        dirs_exist_ok=True, ignore=_ignore,
+    )
     return scripts
