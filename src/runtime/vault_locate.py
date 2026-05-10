@@ -55,20 +55,21 @@ def locate_entry_points(
 
     # Strategy 2: substring match against learned_aliases (user-coined terms).
     learned = load_learned_aliases(memory_paths.learned_aliases)
+    normalized_query = _normalize(query)
     for alias, concept in learned.items():
-        if alias.lower() in query.lower():
+        if _normalize(alias) in normalized_query:
             return {"matches": [concept], "strategy": "learned_alias"}
 
     # Strategy 3: substring match against the static alias_map.
     aliases = load_alias_map(index_paths.alias_map)
     for alias, concept in aliases.items():
-        if alias.lower() in query.lower():
+        if _normalize(alias) in normalized_query:
             return {"matches": [concept], "strategy": "alias_match"}
 
     # Strategy 4: MOC name appears in query.
     mocs = load_moc_map(index_paths.moc_map)
     for moc_name, entry in mocs.items():
-        if moc_name.lower() in query.lower():
+        if _normalize(moc_name) in normalized_query:
             return {
                 "matches": list(entry.get("children", [])),
                 "strategy": "moc_match",
