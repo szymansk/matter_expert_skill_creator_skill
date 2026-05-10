@@ -130,3 +130,28 @@ class Pipeline:
         existing.metadata.update(metadata)
         ps.items[item_id] = existing
         self._save()
+
+    def record_cost(self, phase: Phase, usd: float) -> None:
+        """Add an incremental cost to the phase's total and the global running total."""
+        per_phase = self._state.cost_tracker["per_phase"]
+        per_phase[phase.value] = round(per_phase.get(phase.value, 0.0) + usd, 10)
+        self._state.cost_tracker["actual_so_far_usd"] = round(
+            self._state.cost_tracker.get("actual_so_far_usd", 0.0) + usd, 10
+        )
+        self._save()
+
+    def set_estimated_total(self, usd: float) -> None:
+        """Set the upfront cost estimate (called once after computing the breakdown)."""
+        self._state.cost_tracker["estimated_total_usd"] = usd
+        self._save()
+
+    def is_phase_complete(self, phase: Phase) -> bool:
+        """Return True iff the phase's status is `completed`."""
+        return self._state.phases[phase.value].status == "completed"
+
+    def next_pending_phase(self) -> Phase | None:
+        """Return the first phase whose status is not `completed`, or None if all are."""
+        for phase in Phase:
+            if not self.is_phase_complete(phase):
+                return phase
+        return None

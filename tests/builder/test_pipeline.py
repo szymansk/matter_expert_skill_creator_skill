@@ -183,3 +183,94 @@ def test_record_item_failed_captures_error(run_dir: Path):
     item = pipeline.state.phases["ingest"].items["doc_003.pdf"]
     assert item.status == "failed"
     assert "extraction failed" in (item.error or "")
+
+
+def test_record_cost_adds_to_phase_total(run_dir: Path):
+    pipeline = Pipeline.create(
+        run_id="x", input_dir=Path("/tmp"), url_list=[], run_dir=run_dir,
+    )
+    pipeline.record_cost(Phase.INGEST, 0.42)
+    pipeline.record_cost(Phase.INGEST, 0.18)
+
+    assert pipeline.state.cost_tracker["per_phase"]["ingest"] == 0.60
+    assert pipeline.state.cost_tracker["actual_so_far_usd"] == 0.60
+
+
+def test_record_cost_separate_phases(run_dir: Path):
+    pipeline = Pipeline.create(
+        run_id="x", input_dir=Path("/tmp"), url_list=[], run_dir=run_dir,
+    )
+    pipeline.record_cost(Phase.INGEST, 0.40)
+    pipeline.record_cost(Phase.TRANSFORM, 4.20)
+
+    assert pipeline.state.cost_tracker["per_phase"]["ingest"] == 0.40
+    assert pipeline.state.cost_tracker["per_phase"]["transform"] == 4.20
+    assert pipeline.state.cost_tracker["actual_so_far_usd"] == 4.60
+
+
+def test_record_cost_persists_to_disk(run_dir: Path):
+    pipeline = Pipeline.create(
+        run_id="x", input_dir=Path("/tmp"), url_list=[], run_dir=run_dir,
+    )
+    pipeline.record_cost(Phase.LINK, 1.80)
+
+    reloaded = Pipeline.resume(run_dir)
+    assert reloaded.state.cost_tracker["per_phase"]["link"] == 1.80
+
+
+def test_set_estimated_total_persists(run_dir: Path):
+    pipeline = Pipeline.create(
+        run_id="x", input_dir=Path("/tmp"), url_list=[], run_dir=run_dir,
+    )
+    pipeline.set_estimated_total(11.80)
+
+    reloaded = Pipeline.resume(run_dir)
+    assert reloaded.state.cost_tracker["estimated_total_usd"] == 11.80
+
+
+def test_is_phase_complete_initially_false(run_dir: Path):
+    pipeline = Pipeline.create(
+        run_id="x", input_dir=Path("/tmp"), url_list=[], run_dir=run_dir,
+    )
+    for phase in Phase:
+        assert pipeline.is_phase_complete(phase) is False
+
+
+def test_is_phase_complete_after_marking(run_dir: Path):
+    pipeline = Pipeline.create(
+        run_id="x", input_dir=Path("/tmp"), url_list=[], run_dir=run_dir,
+    )
+    pipeline.mark_phase_started(Phase.INGEST)
+    pipeline.mark_phase_completed(Phase.INGEST)
+    assert pipeline.is_phase_complete(Phase.INGEST) is True
+    assert pipeline.is_phase_complete(Phase.TRANSFORM) is False
+
+
+def test_next_pending_phase_first_run(run_dir: Path):
+    pipeline = Pipeline.create(
+        run_id="x", input_dir=Path("/tmp"), url_list=[], run_dir=run_dir,
+    )
+    assert pipeline.next_pending_phase() == Phase.INGEST
+
+
+def test_next_pending_phase_skips_completed(run_dir: Path):
+    pipeline = Pipeline.create(
+        run_id="x", input_dir=Path("/tmp"), url_list=[], run_dir=run_dir,
+    )
+    pipeline.mark_phase_started(Phase.INGEST)
+    pipeline.mark_phase_completed(Phase.INGEST)
+    pipeline.mark_phase_started(Phase.TRANSFORM)
+    pipeline.mark_phase_completed(Phase.TRANSFORM)
+
+    assert pipeline.next_pending_phase() == Phase.LINK
+
+
+def test_next_pending_phase_returns_none_when_all_done(run_dir: Path):
+    pipeline = Pipeline.create(
+        run_id="x", input_dir=Path("/tmp"), url_list=[], run_dir=run_dir,
+    )
+    for phase in Phase:
+        pipeline.mark_phase_started(phase)
+        pipeline.mark_phase_completed(phase)
+
+    assert pipeline.next_pending_phase() is None
