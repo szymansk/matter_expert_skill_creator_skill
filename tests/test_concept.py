@@ -153,3 +153,41 @@ body
 
     page = ConceptPage.read(file)
     assert page.name == "oauth2-flow"
+
+
+def test_concept_page_write_round_trip(tmp_path: Path):
+    fm = ConceptFrontmatter(
+        title="JWT Tokens",
+        sources=[Source(file="security.pdf", sections=["2.4"])],
+        tags=["auth", "tokens"],
+        created=date(2026, 5, 10),
+        related=["oauth2-flow"],
+        prerequisites=["encryption-fundamentals"],
+        examples=[],
+        contrasts=["session-tokens"],
+        refines=[],
+    )
+    page = ConceptPage(
+        frontmatter=fm,
+        body="# JWT Tokens\n\nJSON Web Tokens are signed JSON objects.\n",
+        path=tmp_path / "jwt-tokens.md",
+    )
+    page.write()
+
+    reread = ConceptPage.read(page.path)
+    assert reread.frontmatter == fm
+    assert reread.body.strip() == page.body.strip()
+
+
+def test_concept_page_write_creates_parent_dirs(tmp_path: Path):
+    fm = ConceptFrontmatter(
+        title="Test",
+        sources=[Source(file="a.pdf", sections=[])],
+        tags=[],
+        created=date(2026, 5, 10),
+    )
+    nested = tmp_path / "concepts" / "nested" / "topic.md"
+    page = ConceptPage(frontmatter=fm, body="body", path=nested)
+    page.write()
+
+    assert nested.exists()

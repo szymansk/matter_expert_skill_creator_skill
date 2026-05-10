@@ -6,7 +6,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from matter_expert.frontmatter import parse_frontmatter
+from matter_expert.frontmatter import ParsedDocument, parse_frontmatter, write_frontmatter
 from matter_expert.wikilinks import normalize_wikilink
 
 
@@ -98,3 +98,11 @@ class ConceptPage:
             body=parsed.body,
             path=path,
         )
+
+    def write(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        doc = ParsedDocument(
+            metadata=self.frontmatter.to_dict(),
+            body=self.body,
+        )
+        self.path.write_text(write_frontmatter(doc), encoding="utf-8")
