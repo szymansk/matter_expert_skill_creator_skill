@@ -112,3 +112,36 @@ def test_orchestrator_writes_typed_links_to_concept_frontmatter(
     assert "jwt-tokens" in oauth.frontmatter.related
     assert "jwt-tokens" not in jwt.frontmatter.related
     assert "oauth2-flow" in jwt.frontmatter.related
+
+
+def test_orchestrator_empty_vault_completes_cleanly(canned_agent, tmp_path, run_dir):
+    """Link phase must not crash when concepts/ dir is absent or empty."""
+    vault = VaultPaths(root=tmp_path / "vault")
+    # No concepts dir created — vault is completely empty.
+    pipeline = Pipeline.create(
+        run_id="x", input_dir=Path("/tmp"), url_list=[], run_dir=run_dir,
+    )
+    orch = LinkOrchestrator(agent=canned_agent, vault_dir=vault.root)
+    orch.link(pipeline=pipeline)
+
+    # No LLM calls made; phase marked completed.
+    assert canned_agent.calls == []
+    assert pipeline.state.phases["link"].status == "completed"
+
+
+def test_orchestrator_single_concept_skips_link_agent(canned_agent, tmp_path, run_dir):
+    """With only one concept there are no peers; LinkAgent must not be called."""
+    vault = VaultPaths(root=tmp_path / "vault")
+    _seed_concept(vault, "solo-concept", "Solo", tags=["alone"])
+
+    canned_agent.recipes["Inventory"] = json.dumps({"clusters": []})
+
+    pipeline = Pipeline.create(
+        run_id="x", input_dir=Path("/tmp"), url_list=[], run_dir=run_dir,
+    )
+    orch = LinkOrchestrator(agent=canned_agent, vault_dir=vault.root)
+    orch.link(pipeline=pipeline)
+
+    # Only the cluster call should have been made (1 call), not a link call.
+    link_calls = [c for c in canned_agent.calls if "Target concept" in c["prompt"]]
+    assert link_calls == [], "LinkAgent must not be called for a single-concept vault"

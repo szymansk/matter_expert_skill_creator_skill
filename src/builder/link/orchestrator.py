@@ -46,8 +46,10 @@ class LinkOrchestrator:
         inventory = build_inventory(self._paths.concepts)
 
         # 5. Assign typed links to each surviving concept.
-        for summary in inventory:
-            self._assign_links(summary, inventory, pipeline)
+        # Skip the LLM call when there's only one concept — it has no peers.
+        if len(inventory) > 1:
+            for summary in inventory:
+                self._assign_links(summary, inventory, pipeline)
 
         # 6. Generate MOCs from final inventory.
         self._mocs.generate(inventory, self._paths.mocs)
