@@ -92,3 +92,46 @@ python -m runtime.memory_inspect --memory-dir /path/to/memory
 
 This is Subproject 2 of the matter-expert skill creator.
 See `docs/superpowers/plans/2026-05-10-runtime-scripts.md` for this plan.
+
+## Builder Pipeline Framework (Subproject 3)
+
+The orchestration shell that subprojects 4–8 plug their phase agents into. Lives
+under `src/builder/` and persists run state to `~/.docs-to-skill/<run-id>/pipeline_state.json`.
+
+### Public API
+
+```python
+from pathlib import Path
+from builder import (
+    Pipeline, Phase, Model, Effort,
+    DEFAULT_CONFIGS, config_for_phase,
+    TokenUsage, estimate_cost, format_cost_breakdown,
+    FailureClass, PipelineError, with_retry,
+)
+
+# Create a fresh run
+pipeline = Pipeline.create(
+    run_id="2026-05-10-knowledge-base",
+    input_dir=Path("/path/to/inputs"),
+    url_list=["https://example.com/spec"],
+    run_dir=Path.home() / ".docs-to-skill" / "2026-05-10-knowledge-base",
+)
+pipeline.set_estimated_total(11.80)
+
+# Phase implementations call:
+pipeline.mark_phase_started(Phase.INGEST)
+pipeline.record_item(Phase.INGEST, "doc_001.pdf", status="done", method="text")
+pipeline.record_cost(Phase.INGEST, 0.42)
+pipeline.mark_phase_completed(Phase.INGEST)
+
+# Resume after a crash:
+pipeline = Pipeline.resume(Path.home() / ".docs-to-skill" / "2026-05-10-knowledge-base")
+
+# Replay a phase (and discard later phases' work):
+pipeline.replay_from(Phase.LINK)
+```
+
+### Status
+
+This is Subproject 3 of the matter-expert skill creator.
+See `docs/superpowers/plans/2026-05-10-pipeline-framework.md` for this plan.
