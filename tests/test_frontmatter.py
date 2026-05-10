@@ -61,3 +61,29 @@ def test_write_frontmatter_preserves_list_order():
     reparsed = parse_frontmatter(serialized)
 
     assert reparsed.metadata["sources"] == doc.metadata["sources"]
+
+
+def test_write_frontmatter_with_content_key_in_metadata():
+    """Metadata key 'content' must not collide with Post's content arg."""
+    doc = ParsedDocument(
+        metadata={"title": "T", "content": "metadata-content-not-body"},
+        body="The actual body.",
+    )
+    serialized = write_frontmatter(doc)
+    reparsed = parse_frontmatter(serialized)
+
+    assert reparsed.metadata == doc.metadata
+    assert reparsed.body.strip() == doc.body.strip()
+
+
+def test_write_frontmatter_with_handler_key_in_metadata():
+    """Metadata key 'handler' must not be consumed by Post's handler arg."""
+    doc = ParsedDocument(
+        metadata={"title": "T", "handler": "my-handler-name"},
+        body="Body.",
+    )
+    serialized = write_frontmatter(doc)
+    reparsed = parse_frontmatter(serialized)
+
+    assert reparsed.metadata == doc.metadata
+    assert reparsed.body.strip() == doc.body.strip()
