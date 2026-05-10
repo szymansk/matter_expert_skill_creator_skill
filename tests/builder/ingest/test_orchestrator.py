@@ -1,6 +1,11 @@
+import shutil
 from pathlib import Path
+from unittest.mock import patch, MagicMock
+
+import pytest
 
 from builder.ingest.orchestrator import IngestOrchestrator
+from builder.ingest.pdf_text import PDFTextResult
 from builder.phases import Phase
 from builder.pipeline import Pipeline
 
@@ -87,3 +92,53 @@ def test_orchestrator_unknown_extension_marks_failed(
                                      only_files=["weird.xyz"])
     assert "weird.xyz" not in results
     assert pipeline.state.phases["ingest"].items["weird.xyz"].status == "failed"
+
+
+@pytest.mark.skipif(
+    shutil.which("pdftotext") is None or shutil.which("pdftoppm") is None,
+    reason="pdftotext and pdftoppm required for vision-fallback test",
+)
+def test_orchestrator_records_cost_when_vision_fallback_runs(
+    tmp_path: Path, mock_agent, mock_fetcher, run_dir, ingest_fixtures_dir,
+):
+    """When vision fallback runs, the orchestrator must record a non-zero cost."""
+    # Force vision fallback: patch is_text_extraction_plausible to return False.
+    pipeline = Pipeline.create(
+        run_id="x", input_dir=ingest_fixtures_dir, url_list=[], run_dir=run_dir,
+    )
+    orch = IngestOrchestrator(agent=mock_agent, fetcher=mock_fetcher)
+
+    with patch(
+        "builder.ingest.orchestrator.is_text_extraction_plausible",
+        return_value=False,
+    ):
+        results = orch.ingest_directory(
+            ingest_fixtures_dir, pipeline=pipeline, only_files=["tiny.pdf"],
+        )
+
+    assert "tiny.pdf" in results
+    assert results["tiny.pdf"].meta.extraction_method.value == "vision_fallback"
+    # Vision made agent calls → cost must be recorded.
+    assert len(mock_agent.calls) >= 1
+    ingest_cost = pipeline.state.cost_tracker["per_phase"].get("ingest", 0.0)
+    assert ingest_cost > 0, "vision fallback cost was not recorded to pipeline"
+
+
+def test_orchestrator_no_cost_recorded_for_text_only_pdf(
+    ingest_fixtures_dir, mock_agent, mock_fetcher, run_dir,
+):
+    """Text-only PDF extraction makes no agent calls → no cost recorded."""
+    if shutil.which("pdftotext") is None:
+        pytest.skip("pdftotext not installed")
+
+    pipeline = Pipeline.create(
+        run_id="x", input_dir=ingest_fixtures_dir, url_list=[], run_dir=run_dir,
+    )
+    orch = IngestOrchestrator(agent=mock_agent, fetcher=mock_fetcher)
+    orch.ingest_directory(
+        ingest_fixtures_dir, pipeline=pipeline, only_files=["tiny.pdf"],
+    )
+    # tiny.pdf passes plausibility → text path, no vision, no cost.
+    ingest_cost = pipeline.state.cost_tracker["per_phase"].get("ingest", 0.0)
+    assert ingest_cost == 0.0
+    assert mock_agent.calls == []

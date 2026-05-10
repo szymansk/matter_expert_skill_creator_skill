@@ -39,3 +39,14 @@ def test_vision_converter_meta(ingest_fixtures_dir, mock_agent):
     assert result.meta.page_count >= 1
     # Body assembled from agent responses.
     assert "MOCK_AGENT_RESPONSE" in result.content
+
+
+def test_vision_converter_surfaces_token_usage(ingest_fixtures_dir, mock_agent):
+    """ConvertResult.token_usage must carry the total tokens across all pages."""
+    conv = VisionPDFConverter(agent=mock_agent)
+    result = conv.convert(ingest_fixtures_dir / "tiny.pdf")
+
+    assert result.token_usage is not None
+    n_pages = len(mock_agent.calls)
+    assert result.token_usage.input_tokens == mock_agent.canned_input_tokens * n_pages
+    assert result.token_usage.output_tokens == mock_agent.canned_output_tokens * n_pages

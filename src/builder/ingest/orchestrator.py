@@ -3,13 +3,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from builder.cost_tracker import TokenUsage, estimate_cost
 from builder.ingest.pandoc_converter import PandocConverter
 from builder.ingest.passthrough import PassthroughConverter
 from builder.ingest.pdf_text import PDFTextExtractor, is_text_extraction_plausible
 from builder.ingest.pdf_vision import VisionPDFConverter
 from builder.ingest.protocols import AgentCaller, ConvertResult, HTTPFetcher
 from builder.ingest.url_fetch import URLFetchConverter
-from builder.phases import Phase
+from builder.phases import Model, Phase
 from builder.pipeline import Pipeline
 
 
@@ -57,6 +58,7 @@ class IngestOrchestrator:
                 page_count=result.meta.page_count,
                 extracted_chars=result.meta.extracted_chars,
             )
+            self._record_cost_if_any(result, pipeline)
         return results
 
     def ingest_urls(
@@ -80,6 +82,7 @@ class IngestOrchestrator:
                 extraction_method=result.meta.extraction_method.value,
                 extracted_chars=result.meta.extracted_chars,
             )
+            self._record_cost_if_any(result, pipeline)
         return results
 
     def _convert_file(self, path: Path) -> ConvertResult:
@@ -92,10 +95,27 @@ class IngestOrchestrator:
             return self._convert_pdf(path)
         raise ValueError(f"unsupported extension: {ext}")
 
+    def _record_cost_if_any(self, result: ConvertResult, pipeline: Pipeline) -> None:
+        """Record LLM cost to the pipeline if the converter made any agent calls."""
+        if result.token_usage is None:
+            return
+        usage = result.token_usage
+        usd = estimate_cost(
+            Model.SONNET,
+            TokenUsage(
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+                cached_input_tokens=usage.cached_input_tokens,
+            ),
+        )
+        if usd > 0:
+            pipeline.record_cost(Phase.INGEST, usd)
+
     def _convert_pdf(self, path: Path) -> ConvertResult:
-        # Try text extraction first.
+        # Try text extraction first (one subprocess call).
         text_result = self._pdf_text.extract(path)
         if is_text_extraction_plausible(text_result.text, text_result.page_count):
-            return self._pdf_text.convert(path)
+            # Reuse the already-extracted result — avoid running pdftotext twice.
+            return self._pdf_text.convert_from_extracted(path, text_result)
         # Fall back to vision.
         return self._pdf_vision.convert(path)

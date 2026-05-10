@@ -72,3 +72,17 @@ def test_extractor_raises_when_pdftotext_missing(monkeypatch, ingest_fixtures_di
     ext = PDFTextExtractor()
     with pytest.raises(RuntimeError, match="pdftotext"):
         ext.extract(ingest_fixtures_dir / "tiny.pdf")
+
+
+def test_convert_from_extracted_matches_convert(ingest_fixtures_dir):
+    """convert_from_extracted() with a pre-run result must equal convert()."""
+    ext = PDFTextExtractor()
+    path = ingest_fixtures_dir / "tiny.pdf"
+    pre = ext.extract(path)
+    from_extracted = ext.convert_from_extracted(path, pre)
+    direct = ext.convert(path)
+
+    assert from_extracted.content == direct.content
+    assert from_extracted.meta.extraction_method == direct.meta.extraction_method
+    assert from_extracted.meta.page_count == direct.meta.page_count
+    assert from_extracted.meta.extracted_chars == direct.meta.extracted_chars

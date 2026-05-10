@@ -57,9 +57,18 @@ class PDFTextExtractor:
         return PDFTextResult(text=text, page_count=page_count)
 
     def convert(self, path: Path) -> ConvertResult:
-        result = self.extract(path)
-        outline = [m.group(1) for m in HEADING_PATTERN.finditer(result.text)]
+        return self._build_result(path, self.extract(path))
 
+    def convert_from_extracted(self, path: Path, extracted: PDFTextResult) -> ConvertResult:
+        """Build a ConvertResult from an already-extracted PDFTextResult.
+
+        Avoids re-running pdftotext when the caller already has the result
+        (e.g. the orchestrator ran extract() for the plausibility check).
+        """
+        return self._build_result(path, extracted)
+
+    def _build_result(self, path: Path, result: PDFTextResult) -> ConvertResult:
+        outline = [m.group(1) for m in HEADING_PATTERN.finditer(result.text)]
         meta = DocumentMeta(
             source_path=str(path),
             source_type="pdf",

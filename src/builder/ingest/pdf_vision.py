@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from builder.ingest.meta import DocumentMeta, ExtractionMethod
-from builder.ingest.protocols import AgentCaller, ConvertResult
+from builder.ingest.protocols import AgentCaller, AgentResponse, ConvertResult
 
 
 VISION_PROMPT = (
@@ -69,4 +69,10 @@ class VisionPDFConverter:
             language_detected="und",
             ingested=datetime.now(timezone.utc).date(),
         )
-        return ConvertResult(content=content, meta=meta)
+        # Surface accumulated token counts so the orchestrator can record costs.
+        usage = AgentResponse(
+            text="",
+            input_tokens=total_input_tokens,
+            output_tokens=total_output_tokens,
+        )
+        return ConvertResult(content=content, meta=meta, token_usage=usage)

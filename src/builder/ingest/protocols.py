@@ -13,19 +13,25 @@ from builder.ingest.meta import DocumentMeta
 
 
 @dataclass(frozen=True)
-class ConvertResult:
-    """Output of a Converter — markdown body + extraction metadata."""
-    content: str
-    meta: DocumentMeta
-
-
-@dataclass(frozen=True)
 class AgentResponse:
     """LLM response for an agent call (used by vision fallback, etc.)."""
     text: str
     input_tokens: int
     output_tokens: int
     cached_input_tokens: int = 0
+
+
+@dataclass(frozen=True)
+class ConvertResult:
+    """Output of a Converter — markdown body + extraction metadata.
+
+    `token_usage` is populated by converters that make LLM calls (e.g.
+    VisionPDFConverter) so the orchestrator can record costs to the Pipeline.
+    Local-only converters leave it as None.
+    """
+    content: str
+    meta: DocumentMeta
+    token_usage: AgentResponse | None = None
 
 
 @runtime_checkable
