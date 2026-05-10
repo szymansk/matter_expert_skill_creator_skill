@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from builder.phases import Phase
 from builder.state import PipelineState
@@ -81,3 +82,51 @@ class Pipeline:
             )
         state = PipelineState.read(state_path)
         return cls(run_dir=run_dir, state=state)
+
+    def mark_phase_started(self, phase: Phase) -> None:
+        """Set phase status to in_progress and record start timestamp."""
+        ps = self._state.phases[phase.value]
+        ps.status = "in_progress"
+        ps.started_at = _utc_iso_now()
+        self._save()
+
+    def mark_phase_completed(self, phase: Phase) -> None:
+        """Set phase status to completed and record completion timestamp."""
+        ps = self._state.phases[phase.value]
+        ps.status = "completed"
+        ps.completed_at = _utc_iso_now()
+        self._save()
+
+    def mark_phase_failed(self, phase: Phase, error: str) -> None:
+        """Set phase status to failed."""
+        from builder.state import ItemState
+        ps = self._state.phases[phase.value]
+        ps.status = "failed"
+        ps.completed_at = _utc_iso_now()
+        ps.items["_phase"] = ItemState(
+            status="failed",
+            completed_at=ps.completed_at,
+            error=error,
+        )
+        self._save()
+
+    def record_item(
+        self,
+        phase: Phase,
+        item_id: str,
+        status: str,
+        error: str | None = None,
+        **metadata: Any,
+    ) -> None:
+        """Record or update the state of a single item within a phase."""
+        from builder.state import ItemState
+        ps = self._state.phases[phase.value]
+        existing = ps.items.get(item_id, ItemState())
+        existing.status = status
+        if status in ("done", "failed"):
+            existing.completed_at = _utc_iso_now()
+        if error is not None:
+            existing.error = error
+        existing.metadata.update(metadata)
+        ps.items[item_id] = existing
+        self._save()

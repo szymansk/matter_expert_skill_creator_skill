@@ -90,3 +90,96 @@ def test_resume_preserves_phase_progress(run_dir: Path):
     resumed = Pipeline.resume(run_dir)
     assert resumed.state.phases["ingest"].status == "completed"
     assert resumed.state.phases["transform"].status == "pending"
+
+
+from builder.phases import Phase
+
+
+def test_mark_phase_started_sets_status_and_timestamp(run_dir: Path):
+    pipeline = Pipeline.create(
+        run_id="x", input_dir=Path("/tmp"), url_list=[], run_dir=run_dir,
+    )
+    pipeline.mark_phase_started(Phase.INGEST)
+
+    phase_state = pipeline.state.phases["ingest"]
+    assert phase_state.status == "in_progress"
+    assert phase_state.started_at is not None
+
+
+def test_mark_phase_completed_sets_status_and_timestamp(run_dir: Path):
+    pipeline = Pipeline.create(
+        run_id="x", input_dir=Path("/tmp"), url_list=[], run_dir=run_dir,
+    )
+    pipeline.mark_phase_started(Phase.INGEST)
+    pipeline.mark_phase_completed(Phase.INGEST)
+
+    phase_state = pipeline.state.phases["ingest"]
+    assert phase_state.status == "completed"
+    assert phase_state.completed_at is not None
+
+
+def test_mark_phase_failed_records_error(run_dir: Path):
+    pipeline = Pipeline.create(
+        run_id="x", input_dir=Path("/tmp"), url_list=[], run_dir=run_dir,
+    )
+    pipeline.mark_phase_started(Phase.INGEST)
+    pipeline.mark_phase_failed(Phase.INGEST, error="model unavailable")
+
+    phase_state = pipeline.state.phases["ingest"]
+    assert phase_state.status == "failed"
+
+
+def test_mark_phase_persists_to_disk(run_dir: Path):
+    pipeline = Pipeline.create(
+        run_id="x", input_dir=Path("/tmp"), url_list=[], run_dir=run_dir,
+    )
+    pipeline.mark_phase_started(Phase.INGEST)
+
+    reloaded = Pipeline.resume(run_dir)
+    assert reloaded.state.phases["ingest"].status == "in_progress"
+
+
+def test_record_item_creates_new_item(run_dir: Path):
+    pipeline = Pipeline.create(
+        run_id="x", input_dir=Path("/tmp"), url_list=[], run_dir=run_dir,
+    )
+    pipeline.record_item(
+        Phase.INGEST,
+        item_id="doc_001.pdf",
+        status="done",
+        method="text",
+        page_count=42,
+    )
+
+    item = pipeline.state.phases["ingest"].items["doc_001.pdf"]
+    assert item.status == "done"
+    assert item.completed_at is not None
+    assert item.metadata["method"] == "text"
+    assert item.metadata["page_count"] == 42
+
+
+def test_record_item_updates_existing_item(run_dir: Path):
+    pipeline = Pipeline.create(
+        run_id="x", input_dir=Path("/tmp"), url_list=[], run_dir=run_dir,
+    )
+    pipeline.record_item(Phase.INGEST, "doc_001.pdf", status="in_progress")
+    pipeline.record_item(Phase.INGEST, "doc_001.pdf", status="done")
+
+    item = pipeline.state.phases["ingest"].items["doc_001.pdf"]
+    assert item.status == "done"
+
+
+def test_record_item_failed_captures_error(run_dir: Path):
+    pipeline = Pipeline.create(
+        run_id="x", input_dir=Path("/tmp"), url_list=[], run_dir=run_dir,
+    )
+    pipeline.record_item(
+        Phase.INGEST,
+        "doc_003.pdf",
+        status="failed",
+        error="extraction failed: no text recoverable",
+    )
+
+    item = pipeline.state.phases["ingest"].items["doc_003.pdf"]
+    assert item.status == "failed"
+    assert "extraction failed" in (item.error or "")
