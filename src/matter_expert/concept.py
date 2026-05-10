@@ -3,8 +3,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
+from pathlib import Path
 from typing import Any
 
+from matter_expert.frontmatter import parse_frontmatter
 from matter_expert.wikilinks import normalize_wikilink
 
 
@@ -74,3 +76,25 @@ class ConceptFrontmatter:
             "refines": list(self.refines),
             "merged_from": list(self.merged_from),
         }
+
+
+@dataclass
+class ConceptPage:
+    """A vault concept page: structured frontmatter + markdown body."""
+
+    frontmatter: ConceptFrontmatter
+    body: str
+    path: Path
+
+    @property
+    def name(self) -> str:
+        return self.path.stem
+
+    @classmethod
+    def read(cls, path: Path) -> "ConceptPage":
+        parsed = parse_frontmatter(path.read_text(encoding="utf-8"))
+        return cls(
+            frontmatter=ConceptFrontmatter.from_dict(parsed.metadata),
+            body=parsed.body,
+            path=path,
+        )

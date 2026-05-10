@@ -99,3 +99,57 @@ def test_concept_frontmatter_normalizes_wikilinks_in_links():
     })
 
     assert fm.related == ["jwt-tokens", "session-management"]
+
+
+from pathlib import Path
+from matter_expert.concept import ConceptPage
+
+
+def test_concept_page_read(tmp_path: Path):
+    md = """---
+title: OAuth2 Flow
+sources:
+  - file: handbook.pdf
+    sections: ["3.1", "3.2"]
+tags: [auth, oauth2]
+created: 2026-05-10
+related: [jwt-tokens]
+prerequisites: [http-basics]
+examples: []
+contrasts: [basic-auth]
+refines: []
+merged_from: []
+---
+
+# OAuth2 Flow
+
+OAuth2 separates authentication and authorization through tokens.
+"""
+    file = tmp_path / "oauth2-flow.md"
+    file.write_text(md)
+
+    page = ConceptPage.read(file)
+
+    assert page.path == file
+    assert page.frontmatter.title == "OAuth2 Flow"
+    assert page.frontmatter.related == ["jwt-tokens"]
+    assert page.frontmatter.contrasts == ["basic-auth"]
+    assert "OAuth2 separates" in page.body
+
+
+def test_concept_page_name_from_path(tmp_path: Path):
+    """The concept's canonical name is its filename without extension."""
+    md = """---
+title: X
+sources: [{file: a.pdf, sections: []}]
+tags: []
+created: 2026-05-10
+---
+
+body
+"""
+    file = tmp_path / "oauth2-flow.md"
+    file.write_text(md)
+
+    page = ConceptPage.read(file)
+    assert page.name == "oauth2-flow"
