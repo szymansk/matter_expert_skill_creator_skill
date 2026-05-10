@@ -135,3 +135,47 @@ pipeline.replay_from(Phase.LINK)
 
 This is Subproject 3 of the matter-expert skill creator.
 See `docs/superpowers/plans/2026-05-10-pipeline-framework.md` for this plan.
+
+## End-to-end Builder (Subproject 9)
+
+The user-facing entry point. Wires Ingest → Transform → Link → QA → Emit into
+a single command.
+
+### CLI
+
+```bash
+# Estimate the cost before running:
+python -m builder.integration.cli estimate --input /path/to/docs
+
+# Run the full build (asks for confirmation unless --yes):
+python -m builder.integration.cli build \
+  --input /path/to/docs \
+  --run-dir ~/.docs-to-skill/2026-05-10-oauth-expert \
+  --plugin-root ~/expert-skills/oauth-expert \
+  --name oauth-expert \
+  --description "Expert on OAuth, JWT, and authentication."
+
+# Resume an aborted build (same command — auto-detects existing state):
+python -m builder.integration.cli build \
+  --input /path/to/docs \
+  --run-dir ~/.docs-to-skill/2026-05-10-oauth-expert \
+  --plugin-root ~/expert-skills/oauth-expert \
+  --name oauth-expert \
+  --description "Expert on OAuth, JWT, and authentication."
+
+# Replay a specific phase (e.g., redo Link with a different model config):
+python -m builder.integration.cli build \
+  ... \
+  --replay-from link
+```
+
+The CLI requires:
+- `ANTHROPIC_API_KEY` in the environment (for the AnthropicAgent)
+- `pandoc`, `pdftotext`, `pdftoppm` on PATH (system binaries)
+
+### User-facing skill
+
+For Claude Code users, `docs-to-skill/SKILL.md` provides a conversational
+wrapper that invokes the CLI. Drop the `docs-to-skill/` directory into
+`~/.claude/plugins/docs-to-skill/` and Claude will use it for any
+"build a skill from these documents..." style request.
