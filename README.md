@@ -59,3 +59,36 @@ pytest
 This is Subproject 1 of the matter-expert skill creator.
 See `docs/superpowers/specs/2026-05-10-docs-to-skill-design.md` for the full design.
 See `docs/superpowers/plans/2026-05-10-foundation.md` for the implementation plan.
+
+## Runtime (Subproject 2)
+
+Stdlib-only Python engine bundled into generated expert-skill plugins. Lives under
+`src/runtime/` and uses ONLY the Python standard library plus `ripgrep` as a system
+binary — never imports `matter_expert` or any other third-party library.
+
+### Scripts (each works as both a Python module and a CLI)
+
+- `runtime.vault_cite` — concept name → source attribution
+- `runtime.vault_search` — body content search via ripgrep, optional tag filter
+- `runtime.vault_locate` — Layer 1: query_cache → learned_aliases → alias_map → moc_map
+- `runtime.vault_traverse` — Layer 3: BFS through typed link graph (depth-limited)
+- `runtime.vault_brainstorm` — produce hypothesis scaffold JSON for Claude
+- `runtime.memory_update` — record query in cache, update co-access frequency
+- `runtime.memory_inspect` — human-readable summary of the current memory state
+
+### CLI usage
+
+```bash
+python -m runtime.vault_cite --concept-index /path/to/_index/concept_index.json oauth2-flow
+python -m runtime.vault_search --vault /path/to/vault --concept-index ... --query "OAuth2"
+python -m runtime.vault_locate --index-dir /path/to/_index --memory-dir /path/to/memory "user query"
+python -m runtime.vault_traverse --link-graph ... --depth 2 --from oauth2-flow
+python -m runtime.vault_brainstorm --index-dir ... --vault ... --memory-dir ... --topic "authentication"
+python -m runtime.memory_update --memory-dir ... --query "..." --used-concepts "a,b"
+python -m runtime.memory_inspect --memory-dir /path/to/memory
+```
+
+### Status
+
+This is Subproject 2 of the matter-expert skill creator.
+See `docs/superpowers/plans/2026-05-10-runtime-scripts.md` for this plan.
