@@ -16,6 +16,7 @@ from runtime.memory import (
     load_learned_aliases,
     load_path_frequency,
     load_query_cache,
+    load_session_log,
     load_user_preferences,
 )
 
@@ -28,6 +29,7 @@ def inspect_memory(memory_dir: Path) -> dict[str, Any]:
     freq = load_path_frequency(paths.path_frequency)
     aliases = load_learned_aliases(paths.learned_aliases)
     prefs = load_user_preferences(paths.user_preferences)
+    sessions = load_session_log(paths.session_log)
 
     most_used = sorted(
         ((name, info.get("total_accesses", 0)) for name, info in freq.items()),
@@ -40,6 +42,7 @@ def inspect_memory(memory_dir: Path) -> dict[str, Any]:
         "query_cache_size": len(cache),
         "most_used_concepts": most_used,
         "learned_aliases_count": len(aliases),
+        "session_log_count": len(sessions),
         "user_preferences": prefs,
     }
 
@@ -48,6 +51,7 @@ def _format_human(report: dict[str, Any]) -> str:
     lines = [
         f"query_cache_size: {report['query_cache_size']}",
         f"learned_aliases_count: {report['learned_aliases_count']}",
+        f"session_log_count: {report['session_log_count']}",
         "most_used_concepts:",
     ]
     if not report["most_used_concepts"]:

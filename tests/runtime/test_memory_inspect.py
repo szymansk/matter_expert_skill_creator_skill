@@ -55,6 +55,22 @@ def test_inspect_counts_learned_aliases(memory_dir: Path):
     assert report["learned_aliases_count"] == 3
 
 
+def test_inspect_counts_session_log(memory_dir: Path):
+    from runtime.memory import save_session_log
+    save_session_log(memory_dir / "session_log.json", [
+        {"session_id": "s1", "topic": "t1", "hypotheses": []},
+        {"session_id": "s2", "topic": "t2", "hypotheses": []},
+        {"session_id": "s3", "topic": "t3", "hypotheses": []},
+    ])
+    report = inspect_memory(memory_dir)
+    assert report["session_log_count"] == 3
+
+
+def test_inspect_empty_session_log(memory_dir: Path):
+    report = inspect_memory(memory_dir)
+    assert report["session_log_count"] == 0
+
+
 def test_cli_outputs_human_readable(memory_dir: Path):
     save_query_cache(
         memory_dir / "query_cache.json",
