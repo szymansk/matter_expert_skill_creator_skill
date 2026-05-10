@@ -8,7 +8,10 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from matter_expert.concept import ConceptFrontmatter
 
 
 @dataclass
@@ -127,3 +130,108 @@ class MOCMap:
             json.dumps(serializable, indent=2, sort_keys=True),
             encoding="utf-8",
         )
+
+
+@dataclass
+class LinkGraphEntry:
+    """One entry in link_graph.json. Forward links mirror ConceptFrontmatter;
+    inverse links are computed by LinkGraph.build()."""
+
+    related: list[str] = field(default_factory=list)
+    prerequisites: list[str] = field(default_factory=list)
+    examples: list[str] = field(default_factory=list)
+    contrasts: list[str] = field(default_factory=list)
+    refines: list[str] = field(default_factory=list)
+    # Inverse links (materialized at build time):
+    leads_to: list[str] = field(default_factory=list)        # inverse of prerequisites
+    instances: list[str] = field(default_factory=list)       # inverse of examples
+    refined_by: list[str] = field(default_factory=list)      # inverse of refines
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "LinkGraphEntry":
+        return cls(
+            related=list(data.get("related", [])),
+            prerequisites=list(data.get("prerequisites", [])),
+            examples=list(data.get("examples", [])),
+            contrasts=list(data.get("contrasts", [])),
+            refines=list(data.get("refines", [])),
+            leads_to=list(data.get("leads_to", [])),
+            instances=list(data.get("instances", [])),
+            refined_by=list(data.get("refined_by", [])),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "related": list(self.related),
+            "prerequisites": list(self.prerequisites),
+            "examples": list(self.examples),
+            "contrasts": list(self.contrasts),
+            "refines": list(self.refines),
+            "leads_to": list(self.leads_to),
+            "instances": list(self.instances),
+            "refined_by": list(self.refined_by),
+        }
+
+
+@dataclass
+class LinkGraph:
+    """Maps concept name to its LinkGraphEntry."""
+
+    entries: dict[str, LinkGraphEntry] = field(default_factory=dict)
+
+    def __getitem__(self, name: str) -> LinkGraphEntry:
+        return self.entries[name]
+
+    def __contains__(self, name: str) -> bool:
+        return name in self.entries
+
+    def __iter__(self):
+        return iter(self.entries)
+
+    @classmethod
+    def read(cls, path: Path) -> "LinkGraph":
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return cls({k: LinkGraphEntry.from_dict(v) for k, v in raw.items()})
+
+    def write(self, path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        serializable = {k: v.to_dict() for k, v in self.entries.items()}
+        path.write_text(
+            json.dumps(serializable, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+
+    @classmethod
+    def build(cls, concepts: dict[str, "ConceptFrontmatter"]) -> "LinkGraph":
+        """Build a LinkGraph from concept frontmatters, materializing inverse links.
+
+        Forward links (related, prerequisites, examples, contrasts, refines)
+        are copied from each concept. Inverse links (leads_to, instances,
+        refined_by) are computed by walking each concept's outgoing links
+        and adding the reverse pointer.
+        """
+        # Initialize entries with forward links from each concept.
+        entries: dict[str, LinkGraphEntry] = {
+            name: LinkGraphEntry(
+                related=list(fm.related),
+                prerequisites=list(fm.prerequisites),
+                examples=list(fm.examples),
+                contrasts=list(fm.contrasts),
+                refines=list(fm.refines),
+            )
+            for name, fm in concepts.items()
+        }
+
+        # Compute inverse links.
+        for source_name, fm in concepts.items():
+            for prereq in fm.prerequisites:
+                if prereq in entries:
+                    entries[prereq].leads_to.append(source_name)
+            for example in fm.examples:
+                if example in entries:
+                    entries[example].instances.append(source_name)
+            for refined in fm.refines:
+                if refined in entries:
+                    entries[refined].refined_by.append(source_name)
+
+        return cls(entries)

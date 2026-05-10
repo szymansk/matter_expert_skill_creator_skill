@@ -104,3 +104,106 @@ def test_moc_map_round_trip(tmp_path: Path):
 
     reread = MOCMap.read(file)
     assert reread == mocs
+
+
+from matter_expert.concept import ConceptFrontmatter, Source
+from datetime import date
+from matter_expert.index import LinkGraph, LinkGraphEntry
+
+
+def test_link_graph_entry_round_trip():
+    entry = LinkGraphEntry(
+        related=["jwt-tokens"],
+        prerequisites=["http-basics"],
+        examples=["oauth2-google-flow"],
+        contrasts=["basic-auth"],
+        refines=["authentication-overview"],
+        leads_to=[],
+        instances=[],
+        refined_by=[],
+    )
+    assert LinkGraphEntry.from_dict(entry.to_dict()) == entry
+
+
+def test_link_graph_round_trip(tmp_path: Path):
+    graph = LinkGraph({
+        "oauth2-flow": LinkGraphEntry(
+            related=["jwt-tokens"],
+            prerequisites=["http-basics"],
+            examples=["oauth2-google-flow"],
+            contrasts=["basic-auth"],
+            refines=["authentication-overview"],
+            leads_to=[],
+            instances=[],
+            refined_by=[],
+        ),
+    })
+    file = tmp_path / "link_graph.json"
+    graph.write(file)
+
+    assert LinkGraph.read(file) == graph
+
+
+def test_link_graph_build_from_concepts_computes_inverse_links():
+    """Builder builds LinkGraph from concept frontmatter and materializes
+    the inverse links (leads_to, instances, refined_by)."""
+    today = date(2026, 5, 10)
+    src = Source(file="a.pdf", sections=[])
+
+    oauth2 = ConceptFrontmatter(
+        title="OAuth2", sources=[src], tags=[], created=today,
+        prerequisites=["http-basics"],
+        examples=["oauth2-google-flow"],
+        refines=["authentication-overview"],
+    )
+    http_basics = ConceptFrontmatter(
+        title="HTTP", sources=[src], tags=[], created=today,
+    )
+    google_flow = ConceptFrontmatter(
+        title="Google Flow", sources=[src], tags=[], created=today,
+    )
+    auth_overview = ConceptFrontmatter(
+        title="Auth", sources=[src], tags=[], created=today,
+    )
+
+    graph = LinkGraph.build({
+        "oauth2-flow": oauth2,
+        "http-basics": http_basics,
+        "oauth2-google-flow": google_flow,
+        "authentication-overview": auth_overview,
+    })
+
+    # Forward links preserved:
+    assert graph["oauth2-flow"].prerequisites == ["http-basics"]
+
+    # Inverse links materialized:
+    assert "oauth2-flow" in graph["http-basics"].leads_to
+    assert "oauth2-flow" in graph["oauth2-google-flow"].instances
+    assert "oauth2-flow" in graph["authentication-overview"].refined_by
+
+
+def test_link_graph_build_includes_symmetric_links_unchanged():
+    """related and contrasts are symmetric — both sides set them via
+    the link agent. LinkGraph.build does not flip them again."""
+    today = date(2026, 5, 10)
+    src = Source(file="a.pdf", sections=[])
+
+    a = ConceptFrontmatter(
+        title="A", sources=[src], tags=[], created=today,
+        related=["b"], contrasts=["c"],
+    )
+    b = ConceptFrontmatter(
+        title="B", sources=[src], tags=[], created=today,
+        related=["a"],
+    )
+    c = ConceptFrontmatter(
+        title="C", sources=[src], tags=[], created=today,
+        contrasts=["a"],
+    )
+
+    graph = LinkGraph.build({"a": a, "b": b, "c": c})
+
+    assert graph["a"].related == ["b"]
+    assert graph["b"].related == ["a"]
+    assert graph["a"].contrasts == ["c"]
+    assert graph["c"].contrasts == ["a"]
