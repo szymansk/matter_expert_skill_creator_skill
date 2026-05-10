@@ -78,6 +78,23 @@ def test_cli_outputs_json_list(vault_dir: Path, built_indexes):
     assert "oauth2-flow" in parsed
 
 
+def test_strip_frontmatter_no_leading_newline(tmp_path: Path):
+    """Stripping frontmatter must not leave a leading newline."""
+    from runtime.vault_search import _strip_frontmatter
+
+    text = "---\ntitle: Test\n---\nBody starts here\n"
+    body = _strip_frontmatter(text)
+    assert not body.startswith("\n")
+    assert body.startswith("Body starts here")
+
+
+def test_strip_frontmatter_no_frontmatter_unchanged():
+    """Text without frontmatter is returned as-is."""
+    from runtime.vault_search import _strip_frontmatter
+    text = "Just body, no frontmatter."
+    assert _strip_frontmatter(text) == text
+
+
 def test_search_raises_when_ripgrep_missing(monkeypatch, vault_dir: Path, built_indexes):
     """If ripgrep is not on PATH, search_vault must raise a clear error."""
     monkeypatch.setattr("runtime.vault_search.shutil.which", lambda _: None)

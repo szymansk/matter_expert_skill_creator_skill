@@ -35,8 +35,8 @@ def _strip_frontmatter(text: str) -> str:
     close = rest.find("\n---")
     if close == -1:
         return text  # malformed — treat whole file as body
-    # Return everything after the closing "---\n"
-    return rest[close + 4:]  # skip "\n---"
+    # Return everything after the closing "---\n", stripping any leading newline.
+    return rest[close + 4:].lstrip("\n")
 
 
 def search_vault(
