@@ -66,3 +66,18 @@ class Pipeline:
         pipeline = cls(run_dir=run_dir, state=state)
         pipeline._save()
         return pipeline
+
+    @classmethod
+    def resume(cls, run_dir: Path) -> "Pipeline":
+        """Load an existing pipeline run from `run_dir/pipeline_state.json`.
+
+        Raises:
+            FileNotFoundError: if no state file is found.
+        """
+        state_path = run_dir / STATE_FILE_NAME
+        if not state_path.exists():
+            raise FileNotFoundError(
+                f"no pipeline_state.json at {run_dir} — use create() instead"
+            )
+        state = PipelineState.read(state_path)
+        return cls(run_dir=run_dir, state=state)

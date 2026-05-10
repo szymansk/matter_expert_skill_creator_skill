@@ -58,3 +58,35 @@ def test_create_fails_if_run_dir_already_has_state(run_dir: Path):
         Pipeline.create(
             run_id="y", input_dir=Path("/tmp"), url_list=[], run_dir=run_dir,
         )
+
+
+def test_resume_loads_existing_state(run_dir: Path):
+    original = Pipeline.create(
+        run_id="2026-05-10-test",
+        input_dir=Path("/tmp/inputs"),
+        url_list=["https://example.com/x"],
+        run_dir=run_dir,
+    )
+
+    resumed = Pipeline.resume(run_dir)
+    assert resumed.state.run_id == "2026-05-10-test"
+    assert resumed.state.input_dir == "/tmp/inputs"
+    assert resumed.state.url_list == ["https://example.com/x"]
+
+
+def test_resume_fails_if_state_missing(run_dir: Path):
+    with pytest.raises(FileNotFoundError):
+        Pipeline.resume(run_dir)
+
+
+def test_resume_preserves_phase_progress(run_dir: Path):
+    """If the state file shows ingest completed, resume reflects that."""
+    pipeline = Pipeline.create(
+        run_id="x", input_dir=Path("/tmp"), url_list=[], run_dir=run_dir,
+    )
+    pipeline.state.phases["ingest"].status = "completed"
+    pipeline._save()
+
+    resumed = Pipeline.resume(run_dir)
+    assert resumed.state.phases["ingest"].status == "completed"
+    assert resumed.state.phases["transform"].status == "pending"
