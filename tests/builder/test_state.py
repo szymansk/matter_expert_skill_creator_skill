@@ -25,6 +25,7 @@ def test_phase_state_default_pending():
     assert phase.status == "pending"
     assert phase.started_at is None
     assert phase.completed_at is None
+    assert phase.error is None
     assert phase.items == {}
 
 
@@ -34,10 +35,23 @@ def test_phase_state_to_dict_round_trip():
         status="in_progress",
         started_at="2026-05-10T10:00:00Z",
         completed_at=None,
+        error=None,
         items={
             "doc_001.pdf": ItemState(status="done", completed_at="2026-05-10T10:30:00Z"),
             "doc_002.pdf": ItemState(status="in_progress"),
         },
+    )
+    assert PhaseState.from_dict(phase.to_dict()) == phase
+
+
+def test_phase_state_to_dict_round_trip_with_error():
+    phase = PhaseState(
+        name="ingest",
+        status="failed",
+        started_at="2026-05-10T10:00:00Z",
+        completed_at="2026-05-10T10:01:00Z",
+        error="model unavailable",
+        items={},
     )
     assert PhaseState.from_dict(phase.to_dict()) == phase
 

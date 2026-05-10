@@ -54,6 +54,7 @@ class PhaseState:
     status: str = "pending"
     started_at: str | None = None
     completed_at: str | None = None
+    error: str | None = None
     items: dict[str, ItemState] = field(default_factory=dict)
 
     @classmethod
@@ -63,6 +64,7 @@ class PhaseState:
             status=data.get("status", "pending"),
             started_at=data.get("started_at"),
             completed_at=data.get("completed_at"),
+            error=data.get("error"),
             items={
                 k: ItemState.from_dict(v)
                 for k, v in data.get("items", {}).items()
@@ -75,6 +77,7 @@ class PhaseState:
             "status": self.status,
             "started_at": self.started_at,
             "completed_at": self.completed_at,
+            "error": self.error,
             "items": {k: v.to_dict() for k, v in self.items.items()},
         }
 

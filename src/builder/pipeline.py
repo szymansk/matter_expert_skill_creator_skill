@@ -99,15 +99,10 @@ class Pipeline:
 
     def mark_phase_failed(self, phase: Phase, error: str) -> None:
         """Set phase status to failed."""
-        from builder.state import ItemState
         ps = self._state.phases[phase.value]
         ps.status = "failed"
         ps.completed_at = _utc_iso_now()
-        ps.items["_phase"] = ItemState(
-            status="failed",
-            completed_at=ps.completed_at,
-            error=error,
-        )
+        ps.error = error
         self._save()
 
     def record_item(

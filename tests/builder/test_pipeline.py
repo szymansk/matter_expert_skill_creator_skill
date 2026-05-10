@@ -127,6 +127,22 @@ def test_mark_phase_failed_records_error(run_dir: Path):
 
     phase_state = pipeline.state.phases["ingest"]
     assert phase_state.status == "failed"
+    assert phase_state.error == "model unavailable"
+
+
+def test_mark_phase_failed_does_not_collide_with_item_id(run_dir: Path):
+    """A phase impl using item_id='_phase' must not be affected by mark_phase_failed."""
+    pipeline = Pipeline.create(
+        run_id="x", input_dir=Path("/tmp"), url_list=[], run_dir=run_dir,
+    )
+    pipeline.record_item(Phase.INGEST, "_phase", status="done")
+    pipeline.mark_phase_failed(Phase.INGEST, error="something broke")
+
+    ps = pipeline.state.phases["ingest"]
+    assert ps.status == "failed"
+    assert ps.error == "something broke"
+    # The user's "_phase" item is untouched
+    assert ps.items["_phase"].status == "done"
 
 
 def test_mark_phase_persists_to_disk(run_dir: Path):
