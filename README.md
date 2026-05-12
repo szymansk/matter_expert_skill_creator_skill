@@ -179,3 +179,32 @@ For Claude Code users, `docs-to-skill/SKILL.md` provides a conversational
 wrapper that invokes the CLI. Drop the `docs-to-skill/` directory into
 `~/.claude/plugins/docs-to-skill/` and Claude will use it for any
 "build a skill from these documents..." style request.
+
+## Subscription-Native Mode (no API key required)
+
+If you have a Claude Code Pro or Max subscription, you can build expert
+skills without spending API credits. Drop the `docs-to-skill/` directory
+into `~/.claude/plugins/docs-to-skill/` and restart Claude Code.
+
+Then, in any Claude Code session:
+
+> Build a skill from the documents in `~/my-docs/` and call it `oauth-expert`.
+
+The bundled SKILL.md walks Claude through dispatching 12 specialized
+subagents (each with its own model + system prompt — see
+`docs-to-skill/agents/*.md`) interspersed with deterministic helpers
+(`python -m builder.integration.helpers_cli <subcommand>`).
+
+- **Subagent definitions:** `docs-to-skill/agents/*.md` — each has a YAML
+  frontmatter (name, description, model) plus a system prompt as the body
+- **Models per phase:** matches design spec §4.1 (Haiku for
+  Ingest/Transform/Coverage, Sonnet for Link/QA/Emit)
+- **Cost:** billed against your Claude.ai subscription, NOT your API key
+
+Both modes coexist. The CLI (`python -m builder.integration.cli build`)
+remains available for API-direct use.
+
+### Sources
+
+- [Subagents in Claude Code](https://claude.com/blog/subagents-in-claude-code)
+- [Subagents in the SDK](https://code.claude.com/docs/en/agent-sdk/subagents)
