@@ -16,7 +16,11 @@ from pathlib import Path
 
 from builder.emit.index_builder import build_indexes as _build_indexes_fn
 from builder.emit.memory_initializer import initialize_memory
-from builder.emit.plugin_metadata import PluginMetadata, write_plugin_json
+from builder.emit.plugin_metadata import (
+    PluginMetadata,
+    write_marketplace_json,
+    write_plugin_json,
+)
 from builder.emit.readme import ReadmeMeta, generate_readme
 from builder.emit.runtime_bundler import bundle_runtime
 from builder.ingest.pandoc_converter import PandocConverter
@@ -245,14 +249,13 @@ def _cmd_emit_finalize(args) -> int:
         if link_graph_path.exists() else {}
     initialize_memory(memory_dir=memory_dir, link_graph=link_graph)
 
-    # Plugin metadata + README.
-    write_plugin_json(
-        PluginMetadata(
-            name=args.plugin_name, version=args.version,
-            description=args.description, author=args.author,
-        ),
-        plugin_root=plugin_root,
+    # Plugin metadata + marketplace.json (GitHub-installable) + README.
+    meta = PluginMetadata(
+        name=args.plugin_name, version=args.version,
+        description=args.description, author=args.author,
     )
+    write_plugin_json(meta, plugin_root=plugin_root)
+    write_marketplace_json(meta, plugin_root=plugin_root)
     concept_count = len(list((bundled_vault / "concepts").glob("*.md"))) \
         if (bundled_vault / "concepts").exists() else 0
     moc_count = len(list((bundled_vault / "MOCs").glob("*.md"))) \

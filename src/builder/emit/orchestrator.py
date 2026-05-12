@@ -9,7 +9,11 @@ from pathlib import Path
 from builder.cost_tracker import TokenUsage, estimate_cost
 from builder.emit.index_builder import build_indexes
 from builder.emit.memory_initializer import initialize_memory
-from builder.emit.plugin_metadata import PluginMetadata, write_plugin_json
+from builder.emit.plugin_metadata import (
+    PluginMetadata,
+    write_marketplace_json,
+    write_plugin_json,
+)
 from builder.emit.readme import ReadmeMeta, generate_readme
 from builder.emit.runtime_bundler import bundle_runtime
 from builder.emit.skill_md import SkillMdMeta, generate_skill_md
@@ -88,14 +92,13 @@ class EmitOrchestrator:
         )
         initialize_memory(memory_dir=memory_dir, link_graph=link_graph)
 
-        # 6. Write plugin.json.
-        write_plugin_json(
-            PluginMetadata(
-                name=cfg.plugin_name, version=cfg.plugin_version,
-                description=cfg.plugin_description, author=cfg.author,
-            ),
-            plugin_root=plugin_root,
+        # 6. Write plugin.json + marketplace.json (GitHub-installable).
+        meta = PluginMetadata(
+            name=cfg.plugin_name, version=cfg.plugin_version,
+            description=cfg.plugin_description, author=cfg.author,
         )
+        write_plugin_json(meta, plugin_root=plugin_root)
+        write_marketplace_json(meta, plugin_root=plugin_root)
 
         # 7. Write README.
         concept_count = (

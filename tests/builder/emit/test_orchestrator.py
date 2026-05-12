@@ -68,6 +68,8 @@ def test_orchestrator_produces_full_plugin_structure(
 
     # Top-level structure.
     assert (plugin_root / ".claude-plugin" / "plugin.json").exists()
+    # GitHub-installable: marketplace.json sits alongside plugin.json.
+    assert (plugin_root / ".claude-plugin" / "marketplace.json").exists()
     assert (plugin_root / "README.md").exists()
     # Skill directory
     skill = plugin_root / "skills" / "oauth-expert"

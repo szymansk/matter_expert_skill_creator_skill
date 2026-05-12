@@ -1,5 +1,9 @@
 """Emit phase — generates the installable expert-skill plugin."""
-from builder.emit.plugin_metadata import PluginMetadata, write_plugin_json
+from builder.emit.plugin_metadata import (
+    PluginMetadata,
+    write_marketplace_json,
+    write_plugin_json,
+)
 from builder.emit.index_builder import build_indexes
 from builder.emit.runtime_bundler import bundle_runtime
 from builder.emit.memory_initializer import (
@@ -10,7 +14,7 @@ from builder.emit.readme import ReadmeMeta, generate_readme
 from builder.emit.orchestrator import EmitConfig, EmitOrchestrator
 
 __all__ = [
-    "PluginMetadata", "write_plugin_json",
+    "PluginMetadata", "write_plugin_json", "write_marketplace_json",
     "build_indexes",
     "bundle_runtime",
     "DEFAULT_USER_PREFERENCES", "initialize_memory",

@@ -185,6 +185,7 @@ def test_emit_finalize_produces_plugin_structure(tmp_path: Path):
     ])
     assert r.returncode == 0
     assert (plugin / ".claude-plugin" / "plugin.json").exists()
+    assert (plugin / ".claude-plugin" / "marketplace.json").exists()
     assert (plugin / "README.md").exists()
     assert (plugin / "skills" / "test-skill" / "SKILL.md").exists()
     # Bundled runtime

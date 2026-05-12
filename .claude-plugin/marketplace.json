@@ -8,7 +8,7 @@
     {
       "name": "docs-to-skill",
       "description": "Turn folders of documents into standalone Claude Code expert skills. Runs a 5-phase pipeline (Ingest → Transform → Link → QA → Emit). Supports two modes: subscription-native (bundled subagents — no API key required) and API-direct (uses ANTHROPIC_API_KEY).",
-      "version": "0.1.1",
+      "version": "0.2.0",
       "author": {
         "name": "szymansk"
       },
