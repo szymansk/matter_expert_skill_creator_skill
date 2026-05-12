@@ -1,7 +1,7 @@
 {
   "name": "docs-to-skill",
   "description": "Build an installable expert Claude Code skill from a folder of documents (PDF, DOCX, HTML, markdown) plus optional URLs. Runs a 5-phase pipeline (Ingest → Transform → Link → QA → Emit) and produces an installable plugin with a typed-link knowledge vault and cited answers.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": {
     "name": "szymansk"
   }
