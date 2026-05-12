@@ -25,24 +25,90 @@ description: {description}
 This skill answers questions and supports brainstorming based on the vault
 of curated knowledge bundled in this plugin.
 
+## Paths (all bundled inside this skill)
+
+Claude Code sets `${{CLAUDE_SKILL_DIR}}` to this skill's directory when the
+skill activates. Every runtime command below uses absolute paths derived
+from it, so the commands work regardless of the current working directory.
+
+- Vault root:  `${{CLAUDE_SKILL_DIR}}/vault`
+- Indexes:     `${{CLAUDE_SKILL_DIR}}/_index`
+- Memory:      `${{CLAUDE_SKILL_DIR}}/memory`
+- Scripts:     `${{CLAUDE_SKILL_DIR}}/scripts/runtime`
+
 ## When the user asks a question (Q&A mode)
 
-1. Run `scripts/runtime/vault_locate.py` with the user's query to find entry points.
-2. If needed, run `scripts/runtime/vault_search.py` for keyword search.
-3. Run `scripts/runtime/vault_traverse.py` to expand the context via typed links.
-4. Read the identified concept pages from `vault/concepts/`.
-5. Synthesize the answer with explicit citations using the citation format below.
-6. After answering, run `scripts/runtime/memory_update.py` to record what was used.
+1. **Layer 1 — Locate entry points.** Run:
+   ```bash
+   python3 "${{CLAUDE_SKILL_DIR}}/scripts/runtime/vault_locate.py" \\
+     --index-dir "${{CLAUDE_SKILL_DIR}}/_index" \\
+     --memory-dir "${{CLAUDE_SKILL_DIR}}/memory" \\
+     "<user-query>"
+   ```
+
+2. **Layer 2 — Keyword search (if Layer 1 yielded nothing useful).** Run:
+   ```bash
+   python3 "${{CLAUDE_SKILL_DIR}}/scripts/runtime/vault_search.py" \\
+     --vault "${{CLAUDE_SKILL_DIR}}/vault" \\
+     --concept-index "${{CLAUDE_SKILL_DIR}}/_index/concept_index.json" \\
+     --query "<keyword>"
+   ```
+
+3. **Layer 3 — Expand via typed links.** Run with the names found above:
+   ```bash
+   python3 "${{CLAUDE_SKILL_DIR}}/scripts/runtime/vault_traverse.py" \\
+     --link-graph "${{CLAUDE_SKILL_DIR}}/_index/link_graph.json" \\
+     --depth 1 \\
+     --from "<concept-name>"
+   ```
+
+4. **Read** the identified concept pages from `${{CLAUDE_SKILL_DIR}}/vault/concepts/`.
+
+5. **Synthesize** the answer with explicit citations (see Citation format below).
+
+6. **Update memory** with what was used:
+   ```bash
+   python3 "${{CLAUDE_SKILL_DIR}}/scripts/runtime/memory_update.py" \\
+     --memory-dir "${{CLAUDE_SKILL_DIR}}/memory" \\
+     --query "<original user query>" \\
+     --used-concepts "concept-a,concept-b"
+   ```
 
 ## When the user wants to brainstorm
 
-1. Detect brainstorming intent (hypothetical, "what if", "options for", etc.).
-2. Run `scripts/runtime/vault_brainstorm.py` for the topic — get a hypothesis scaffold.
-3. Present hypotheses with confidence levels, sources, assumptions,
-   and falsification criteria.
-4. Make vault gaps (🔍) and source contradictions (⚠️) explicit.
-5. Mark world-knowledge additions with 💡.
-6. End with a forschende Folgefrage.
+Detect brainstorming intent (hypothetical, "what if", "options for", etc.)
+and run the scaffold:
+
+```bash
+python3 "${{CLAUDE_SKILL_DIR}}/scripts/runtime/vault_brainstorm.py" \\
+  --index-dir "${{CLAUDE_SKILL_DIR}}/_index" \\
+  --vault "${{CLAUDE_SKILL_DIR}}/vault" \\
+  --memory-dir "${{CLAUDE_SKILL_DIR}}/memory" \\
+  --topic "<topic>"
+```
+
+The output is structured JSON with `relevant_concepts`, `clusters`,
+`contradictions`, `gaps`, and `entry_questions`. Use it as the scaffold to:
+- Present hypotheses with confidence levels, sources, assumptions, and
+  falsification criteria
+- Make vault gaps (🔍) and source contradictions (⚠️) explicit
+- Mark world-knowledge additions with 💡
+- End with a forschende Folgefrage
+
+## Looking up source attribution for a citation
+
+```bash
+python3 "${{CLAUDE_SKILL_DIR}}/scripts/runtime/vault_cite.py" \\
+  --concept-index "${{CLAUDE_SKILL_DIR}}/_index/concept_index.json" \\
+  "<concept-name>"
+```
+
+## Inspecting what the memory has learned
+
+```bash
+python3 "${{CLAUDE_SKILL_DIR}}/scripts/runtime/memory_inspect.py" \\
+  --memory-dir "${{CLAUDE_SKILL_DIR}}/memory"
+```
 
 ## Citation format
 

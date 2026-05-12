@@ -68,3 +68,61 @@ def test_skill_md_references_correct_script_paths(tmp_path: Path, canned_agent):
     # Must NOT reference the old flat paths
     assert "scripts/vault_locate.py" not in content
     assert "scripts/vault_brainstorm.py" not in content
+
+
+def test_skill_md_passes_required_args_to_scripts(tmp_path: Path, canned_agent):
+    """Every runtime invocation in SKILL.md must pass the args the script requires.
+
+    vault_locate.py and vault_brainstorm.py require --index-dir + --memory-dir.
+    memory_update.py requires --memory-dir.
+    vault_search.py requires --vault + --concept-index.
+    vault_traverse.py requires --link-graph.
+    """
+    skill_dir = tmp_path / "skills" / "x"
+    skill_dir.mkdir(parents=True)
+    path = generate_skill_md(
+        skill_dir=skill_dir,
+        meta=SkillMdMeta(skill_name="x", dominant_topics=["topic"]),
+        agent=canned_agent,
+    )
+    content = path.read_text(encoding="utf-8")
+
+    # vault_locate block must include both required flags.
+    locate_idx = content.index("vault_locate.py")
+    locate_block = content[locate_idx:locate_idx + 400]
+    assert "--index-dir" in locate_block
+    assert "--memory-dir" in locate_block
+
+    # vault_brainstorm block.
+    bs_idx = content.index("vault_brainstorm.py")
+    bs_block = content[bs_idx:bs_idx + 400]
+    assert "--index-dir" in bs_block
+    assert "--vault" in bs_block
+    assert "--memory-dir" in bs_block
+
+    # memory_update block.
+    mu_idx = content.index("memory_update.py")
+    mu_block = content[mu_idx:mu_idx + 400]
+    assert "--memory-dir" in mu_block
+
+    # CLAUDE_SKILL_DIR must be referenced (so paths are absolute, not cwd-dependent).
+    assert "CLAUDE_SKILL_DIR" in content
+
+
+def test_skill_md_template_uses_correct_runtime_paths_relative_to_skill_dir(
+    tmp_path: Path, canned_agent,
+):
+    """All paths must resolve from ${CLAUDE_SKILL_DIR}, not be relative."""
+    skill_dir = tmp_path / "skills" / "x"
+    skill_dir.mkdir(parents=True)
+    path = generate_skill_md(
+        skill_dir=skill_dir,
+        meta=SkillMdMeta(skill_name="x", dominant_topics=[]),
+        agent=canned_agent,
+    )
+    content = path.read_text(encoding="utf-8")
+    # The 4 standard subdirectories of a generated plugin's skill dir.
+    assert "${CLAUDE_SKILL_DIR}/_index" in content
+    assert "${CLAUDE_SKILL_DIR}/memory" in content
+    assert "${CLAUDE_SKILL_DIR}/vault" in content
+    assert "${CLAUDE_SKILL_DIR}/scripts/runtime" in content
