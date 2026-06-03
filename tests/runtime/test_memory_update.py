@@ -1,6 +1,18 @@
+import datetime as dt
 import subprocess
 import sys
 from pathlib import Path
+
+
+def _recent_iso(minutes_ago: int) -> str:
+    """A UTC timestamp `minutes_ago` minutes in the past, in the cache format.
+
+    Using minute offsets keeps the synthetic entries comfortably inside the
+    query-cache TTL window so that LRU/max-entry eviction (not TTL eviction) is
+    what these tests actually exercise — independent of the calendar date.
+    """
+    ts = dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=minutes_ago)
+    return ts.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 from runtime.memory import (
     load_path_frequency,
@@ -46,10 +58,11 @@ def test_update_records_co_access_in_path_frequency(memory_dir: Path):
 
 
 def test_update_lru_evicts_oldest_when_cache_full(memory_dir: Path):
+    # q0 is the oldest (largest offset), q{MAX-1} the most recent; all fresh.
     cache = {
         f"q{i}": {
             "matched_concepts": [],
-            "last_used": f"2026-05-{i+1:02d}T00:00:00Z",
+            "last_used": _recent_iso(QUERY_CACHE_MAX_ENTRIES - i),
             "use_count": 1,
             "user_satisfied": True,
         }
@@ -84,7 +97,7 @@ def test_lru_eviction_handles_missing_last_used(memory_dir: Path):
     cache = {
         f"q{i}": {
             "matched_concepts": [],
-            "last_used": f"2026-05-{i+1:02d}T00:00:00Z",
+            "last_used": _recent_iso(QUERY_CACHE_MAX_ENTRIES - i),
             "use_count": 1,
             "user_satisfied": True,
         }

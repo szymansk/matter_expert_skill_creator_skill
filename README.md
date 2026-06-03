@@ -7,8 +7,24 @@ knowledge vault that the matter-expert skill creator builds and consumes.
 
 ## Install
 
+**As a plugin — no dependencies to install.** The `docs-to-skill` plugin ships
+its own Python code (under `docs-to-skill/skills/docs-to-skill/scripts/lib/`,
+including a vendored pure-Python YAML), so it works immediately after a
+`/plugin marketplace add <github-user>/matter_expert_skill_creator_skill`. The
+only things it cannot bundle are a few system binaries used during Ingest
+(`pandoc`, `pdftotext`, `pdftoppm`); run the preflight check to see what's
+missing on your machine:
+
 ```bash
-pip install -e ".[dev]"
+PYTHONPATH=docs-to-skill/skills/docs-to-skill/scripts/lib \
+  python3 -m builder.integration.helpers_cli doctor
+```
+
+**For development / running the test suite** (only needed to hack on this repo):
+
+```bash
+pip install -e ".[dev]"   # or just: pip install pytest
+pytest                    # pytest resolves the bundled packages via pythonpath
 ```
 
 ## Public API
@@ -63,8 +79,10 @@ See `docs/superpowers/plans/2026-05-10-foundation.md` for the implementation pla
 ## Runtime (Subproject 2)
 
 Stdlib-only Python engine bundled into generated expert-skill plugins. Lives under
-`src/runtime/` and uses ONLY the Python standard library plus `ripgrep` as a system
-binary — never imports `matter_expert` or any other third-party library.
+`docs-to-skill/skills/docs-to-skill/scripts/lib/runtime/` and uses ONLY the Python
+standard library — never imports `matter_expert` or any other third-party library.
+`ripgrep` speeds up body search when present, but is optional: `vault_search` falls
+back to a pure-Python scan, so a produced skill needs no system binaries at all.
 
 ### Scripts (each works as both a Python module and a CLI)
 
@@ -96,7 +114,8 @@ See `docs/superpowers/plans/2026-05-10-runtime-scripts.md` for this plan.
 ## Builder Pipeline Framework (Subproject 3)
 
 The orchestration shell that subprojects 4–8 plug their phase agents into. Lives
-under `src/builder/` and persists run state to `~/.docs-to-skill/<run-id>/pipeline_state.json`.
+under `docs-to-skill/skills/docs-to-skill/scripts/lib/builder/` and persists run
+state to `~/.docs-to-skill/<run-id>/pipeline_state.json`.
 
 ### Public API
 
@@ -170,15 +189,19 @@ python -m builder.integration.cli build \
 ```
 
 The CLI requires:
-- `ANTHROPIC_API_KEY` in the environment (for the AnthropicAgent)
-- `pandoc`, `pdftotext`, `pdftoppm` on PATH (system binaries)
+- `ANTHROPIC_API_KEY` in the environment and the `anthropic` SDK
+  (`pip install anthropic`) — the one optional dependency, needed only for
+  API-direct mode
+- `pandoc`, `pdftotext`, `pdftoppm` on PATH for non-markdown/non-text inputs
+  (run `helpers_cli doctor` to see what's missing; missing tools only skip the
+  affected files)
 
 ### User-facing skill
 
-For Claude Code users, `docs-to-skill/SKILL.md` provides a conversational
-wrapper that invokes the CLI. Drop the `docs-to-skill/` directory into
-`~/.claude/plugins/docs-to-skill/` and Claude will use it for any
-"build a skill from these documents..." style request.
+For Claude Code users, `docs-to-skill/skills/docs-to-skill/SKILL.md` provides a
+conversational wrapper that invokes the bundled pipeline (no API key required).
+Drop the `docs-to-skill/` directory into `~/.claude/plugins/docs-to-skill/` and
+Claude will use it for any "build a skill from these documents..." style request.
 
 ## Subscription-Native Mode (no API key required)
 

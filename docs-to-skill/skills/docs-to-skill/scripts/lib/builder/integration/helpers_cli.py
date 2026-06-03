@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import platform
 import shutil
 import sys
 from datetime import datetime, timezone
@@ -271,12 +272,72 @@ def _cmd_emit_finalize(args) -> int:
     return 0
 
 
+# Each entry: (binary, what it enables, needed_by_builder)
+# `needed_by_builder=True` means some input types can't be ingested without it.
+# `rg` is False: it only speeds up search inside *produced* skills, and those now
+# fall back to a pure-Python search (see runtime/vault_search.py), so it's optional.
+_DOCTOR_CHECKS = [
+    ("pandoc", "Ingest of .docx / .html / .rtf / .odt / .epub", True),
+    ("pdftotext", "PDF text extraction (poppler)", True),
+    ("pdftoppm", "Scanned / image-only PDF ingest via vision (poppler)", True),
+    ("rg", "Faster search in produced skills (optional — pure-Python fallback exists)", False),
+]
+
+_INSTALL_HINTS = {
+    "Darwin": "brew install pandoc poppler ripgrep",
+    "Linux": "sudo apt-get install pandoc poppler-utils ripgrep   # Debian/Ubuntu",
+    "Windows": "choco install pandoc poppler ripgrep",
+}
+
+
+def _cmd_doctor(args) -> int:
+    """Report which external system binaries are present.
+
+    Python code ships with the plugin, so nothing here needs pip. These binaries,
+    however, can't be bundled. Running this first turns a confusing mid-pipeline
+    crash into an up-front, actionable report: .md/.txt inputs need none of them,
+    PDFs need poppler, and Office/HTML inputs need pandoc.
+    """
+    py = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    width = max(len(b) for b, *_ in _DOCTOR_CHECKS)
+
+    print("docs-to-skill environment check\n")
+    print(f"  {'python3'.ljust(width)}  OK        running {py}")
+
+    missing_builder: list[str] = []
+    for binary, role, needed in _DOCTOR_CHECKS:
+        present = shutil.which(binary) is not None
+        status = "OK" if present else "MISSING"
+        print(f"  {binary.ljust(width)}  {status.ljust(8)}  {role}")
+        if not present and needed:
+            missing_builder.append(binary)
+
+    print()
+    if missing_builder:
+        system = platform.system()
+        hint = _INSTALL_HINTS.get(system, _INSTALL_HINTS["Linux"])
+        print(f"Missing tools (some inputs will be skipped): {', '.join(missing_builder)}")
+        print(f"Install on this system: {hint}")
+        print(
+            "Reminder: .md/.txt inputs need none of these; PDFs need poppler; "
+            "Office/HTML inputs need pandoc. Produced skills require no binaries."
+        )
+    else:
+        print("All external tools available — full ingest is supported.")
+    # Always exit 0: missing binaries are warnings, not hard failures. The
+    # per-file ingest loop already records errors and continues for the rest.
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="docs-to-skill-helpers",
         description="Deterministic helpers for the subscription-native orchestrator.",
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
+
+    p = sub.add_parser("doctor", help="Check for required system binaries.")
+    p.set_defaults(fn=_cmd_doctor)
 
     p = sub.add_parser("ingest-deterministic")
     p.add_argument("--input", type=Path, required=True)

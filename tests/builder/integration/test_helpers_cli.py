@@ -16,11 +16,53 @@ def test_helpers_cli_help_lists_all_subcommands():
     r = _run(["--help"])
     assert r.returncode == 0
     for sub in [
+        "doctor",
         "ingest-deterministic", "write-concept", "write-source",
         "write-moc", "apply-links", "apply-merge",
         "build-indexes", "emit-finalize",
     ]:
         assert sub in r.stdout
+
+
+def test_doctor_runs_and_reports():
+    """The preflight check runs as a real subprocess and exits 0."""
+    r = _run(["doctor"])
+    assert r.returncode == 0
+    assert "docs-to-skill environment check" in r.stdout
+    assert "python3" in r.stdout
+    for binary in ("pandoc", "pdftotext", "pdftoppm", "rg"):
+        assert binary in r.stdout
+
+
+def test_doctor_reports_missing_binary(monkeypatch, capsys):
+    """A missing builder binary is flagged MISSING with an install hint, exit 0."""
+    from builder.integration import helpers_cli
+
+    monkeypatch.setattr(
+        helpers_cli.shutil, "which",
+        lambda name: None if name == "pandoc" else f"/usr/bin/{name}",
+    )
+    rc = helpers_cli.main(["doctor"])
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "MISSING" in out
+    assert "pandoc" in out
+    # An install hint is shown when a builder-needed binary is missing.
+    assert "Install on this system" in out
+
+
+def test_doctor_all_present(monkeypatch, capsys):
+    """When every binary resolves, doctor reports full support and exits 0."""
+    from builder.integration import helpers_cli
+
+    monkeypatch.setattr(helpers_cli.shutil, "which", lambda name: f"/usr/bin/{name}")
+    rc = helpers_cli.main(["doctor"])
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "All external tools available" in out
+    assert "MISSING" not in out
 
 
 def test_ingest_deterministic_processes_text_file(tmp_path: Path):

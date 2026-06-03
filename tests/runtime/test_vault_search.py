@@ -9,10 +9,9 @@ import pytest
 from runtime.vault_search import search_vault
 
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("rg") is None,
-    reason="ripgrep not installed",
-)
+# No module-level skip: search now works with or without ripgrep. When `rg` is on
+# PATH the fast path runs; otherwise the pure-Python fallback runs. Both must give
+# the same results, so the behavioral tests below are valid in either environment.
 
 
 def test_search_finds_concept_with_keyword(vault_dir: Path, built_indexes):
@@ -95,12 +94,43 @@ def test_strip_frontmatter_no_frontmatter_unchanged():
     assert _strip_frontmatter(text) == text
 
 
-def test_search_raises_when_ripgrep_missing(monkeypatch, vault_dir: Path, built_indexes):
-    """If ripgrep is not on PATH, search_vault must raise a clear error."""
+def test_search_falls_back_when_ripgrep_missing(monkeypatch, vault_dir: Path, built_indexes):
+    """With ripgrep absent, search_vault uses the pure-Python fallback and still
+    returns correct body-content matches — produced skills need no system binaries."""
     monkeypatch.setattr("runtime.vault_search.shutil.which", lambda _: None)
-    with pytest.raises(RuntimeError, match="ripgrep"):
-        search_vault(
-            query="x",
-            vault_dir=vault_dir,
-            concept_index_path=built_indexes.concept_index,
-        )
+
+    matches = search_vault(
+        query="OAuth2",
+        vault_dir=vault_dir,
+        concept_index_path=built_indexes.concept_index,
+    )
+    assert "oauth2-flow" in matches
+
+    # Frontmatter-only keys still must not match in the fallback path.
+    assert search_vault(
+        query="merged_from",
+        vault_dir=vault_dir,
+        concept_index_path=built_indexes.concept_index,
+    ) == []
+
+    # Tag filtering still applies in the fallback path.
+    tagged = search_vault(
+        query="auth",
+        vault_dir=vault_dir,
+        concept_index_path=built_indexes.concept_index,
+        tags=["oauth2"],
+    )
+    for m in tagged:
+        assert m in {"oauth2-flow", "oauth2-google-flow"}
+
+
+def test_ripgrep_and_python_paths_agree(vault_dir: Path, built_indexes):
+    """When ripgrep is available, the fast path and the fallback agree.
+
+    Skipped if ripgrep isn't installed (nothing to compare against)."""
+    if shutil.which("rg") is None:
+        pytest.skip("ripgrep not installed")
+    from runtime.vault_search import _search_with_ripgrep, _search_with_python
+
+    for query in ("OAuth2", "auth", "ZZZZZZ_nope"):
+        assert _search_with_ripgrep(query, vault_dir) == _search_with_python(query, vault_dir)

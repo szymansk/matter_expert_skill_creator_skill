@@ -1,7 +1,10 @@
 """Runtime engine for the generated expert skill — stdlib only.
 
 This package is bundled into the generated expert-skill plugin.
-It must never import third-party libraries (only Python stdlib + ripgrep).
+It must never import third-party libraries — Python standard library only.
+``ripgrep`` is used to speed up body search when present, but it is optional:
+``vault_search`` falls back to a pure-Python scan, so a produced skill needs no
+system binaries at all to function.
 """
 
 __version__ = "0.0.1"

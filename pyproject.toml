@@ -8,9 +8,10 @@ version = "0.0.1"
 description = "Foundation library for the matter-expert skill creator"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
-dependencies = [
-    "python-frontmatter>=1.1.0",
-]
+# No third-party runtime dependencies: the plugin must work immediately after a
+# `/plugin marketplace add` with zero pip installs. YAML support is vendored
+# under scripts/lib/yaml/ (pure-Python PyYAML); everything else is stdlib.
+dependencies = []
 
 [project.optional-dependencies]
 dev = [
@@ -19,9 +20,14 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["src"]
+# The packages now live inside the plugin so they ship with it (see SKILL.md,
+# which puts this directory on PYTHONPATH via ${CLAUDE_SKILL_DIR}/scripts/lib).
+where = ["docs-to-skill/skills/docs-to-skill/scripts/lib"]
 include = ["matter_expert*", "runtime*", "builder*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v --strict-markers"
+# Resolve the moved packages (and the vendored yaml) without an editable install
+# — keeps the homebrew/PEP-668 base interpreter usable for `pytest` directly.
+pythonpath = ["docs-to-skill/skills/docs-to-skill/scripts/lib"]

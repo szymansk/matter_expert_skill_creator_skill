@@ -6,12 +6,12 @@ from pathlib import Path
 
 
 def _find_runtime_source() -> Path:
-    """Locate the `src/runtime/` directory of the current matter_expert checkout."""
-    # __file__ is .../matter_expert_skill_creator_skill/src/builder/emit/runtime_bundler.py
-    # Climb up to src/ then descend into runtime/.
+    """Locate the `runtime/` package that sits beside `builder/` in scripts/lib/."""
+    # __file__ is .../scripts/lib/builder/emit/runtime_bundler.py
+    # Climb emit/ -> builder/ -> lib/, where runtime/ is a sibling package.
     here = Path(__file__).resolve()
-    src_dir = here.parent.parent.parent  # src/
-    runtime = src_dir / "runtime"
+    lib_dir = here.parent.parent.parent  # scripts/lib/
+    runtime = lib_dir / "runtime"
     if not runtime.is_dir():
         raise RuntimeError(f"runtime source not found at {runtime}")
     return runtime
