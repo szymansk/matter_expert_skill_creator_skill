@@ -56,12 +56,21 @@ def search_vault(
 ) -> list[str]:
     """Return concept names whose body matches `query` (and `tags`, if given).
 
-    Raises:
-        RuntimeError: if `rg` is not on PATH.
+    Ripgrep is used when present because it is fast on large vaults. When it is
+    not on PATH the search falls back to a pure-Python scan so the produced skill
+    works with zero system binaries installed — the result set is the same, only
+    slower. (Body content is matched in both paths; frontmatter is excluded.)
     """
-    if shutil.which("rg") is None:
-        raise RuntimeError("ripgrep ('rg') is required but not on PATH")
+    if shutil.which("rg") is not None:
+        matched_set = _search_with_ripgrep(query, vault_dir)
+    else:
+        matched_set = _search_with_python(query, vault_dir)
 
+    return _filter_by_tags(matched_set, concept_index_path, tags)
+
+
+def _search_with_ripgrep(query: str, vault_dir: Path) -> set[str]:
+    """Fast path: shell out to ripgrep over frontmatter-stripped bodies."""
     concepts_dir = vault_dir / "concepts"
 
     # Write frontmatter-stripped bodies to a temp directory so ripgrep only
@@ -79,14 +88,36 @@ def search_vault(
         )
 
     if proc.returncode == 1:  # ripgrep returncode 1 = no matches (not an error)
-        return []
+        return set()
     if proc.returncode != 0:
         raise RuntimeError(f"ripgrep failed: {proc.stderr.strip()}")
 
-    matched_files = [Path(line).stem for line in proc.stdout.splitlines() if line.strip()]
-    matched_set = set(matched_files)
+    return {Path(line).stem for line in proc.stdout.splitlines() if line.strip()}
 
-    # Apply tag filter if given.
+
+def _search_with_python(query: str, vault_dir: Path) -> set[str]:
+    """Fallback path: case-insensitive substring scan, stdlib only.
+
+    Mirrors the ripgrep path semantically for the keyword queries this engine
+    uses: it matches against the frontmatter-stripped body so structural keys
+    never produce false positives.
+    """
+    concepts_dir = vault_dir / "concepts"
+    needle = query.lower()
+    matched: set[str] = set()
+    for md_file in concepts_dir.glob("*.md"):
+        body = _strip_frontmatter(md_file.read_text(encoding="utf-8"))
+        if needle in body.lower():
+            matched.add(md_file.stem)
+    return matched
+
+
+def _filter_by_tags(
+    matched_set: set[str],
+    concept_index_path: Path,
+    tags: list[str] | None,
+) -> list[str]:
+    """Restrict matches to concepts carrying at least one of `tags`."""
     if tags:
         index = load_concept_index(concept_index_path)
         wanted_tags = set(tags)
@@ -94,7 +125,6 @@ def search_vault(
             name for name in matched_set
             if name in index and wanted_tags.intersection(index[name].get("tags", []))
         }
-
     return sorted(matched_set)
 
 

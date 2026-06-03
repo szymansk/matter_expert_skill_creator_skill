@@ -2,8 +2,9 @@
 import re
 from pathlib import Path
 
-import frontmatter
 import pytest
+
+from matter_expert.frontmatter import parse_frontmatter
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -21,7 +22,7 @@ def _agent_files() -> list[Path]:
 @pytest.mark.parametrize("path", _agent_files(),
                           ids=lambda p: p.name)
 def test_agent_has_required_frontmatter_fields(path: Path):
-    fm = frontmatter.loads(path.read_text(encoding="utf-8"))
+    fm = parse_frontmatter(path.read_text(encoding="utf-8"))
     missing = REQUIRED_FIELDS - set(fm.metadata)
     assert not missing, f"{path.name} missing fields: {missing}"
 
@@ -29,14 +30,14 @@ def test_agent_has_required_frontmatter_fields(path: Path):
 @pytest.mark.parametrize("path", _agent_files(),
                           ids=lambda p: p.name)
 def test_agent_model_is_valid(path: Path):
-    fm = frontmatter.loads(path.read_text(encoding="utf-8"))
+    fm = parse_frontmatter(path.read_text(encoding="utf-8"))
     assert fm.metadata["model"] in ALLOWED_MODELS
 
 
 @pytest.mark.parametrize("path", _agent_files(),
                           ids=lambda p: p.name)
 def test_agent_name_matches_filename(path: Path):
-    fm = frontmatter.loads(path.read_text(encoding="utf-8"))
+    fm = parse_frontmatter(path.read_text(encoding="utf-8"))
     expected = path.stem
     assert fm.metadata["name"] == expected
 
@@ -44,15 +45,15 @@ def test_agent_name_matches_filename(path: Path):
 @pytest.mark.parametrize("path", _agent_files(),
                           ids=lambda p: p.name)
 def test_agent_description_is_non_empty(path: Path):
-    fm = frontmatter.loads(path.read_text(encoding="utf-8"))
+    fm = parse_frontmatter(path.read_text(encoding="utf-8"))
     assert fm.metadata["description"].strip()
 
 
 @pytest.mark.parametrize("path", _agent_files(),
                           ids=lambda p: p.name)
 def test_agent_has_system_prompt_body(path: Path):
-    fm = frontmatter.loads(path.read_text(encoding="utf-8"))
-    assert fm.content.strip(), f"{path.name} has empty system prompt"
+    fm = parse_frontmatter(path.read_text(encoding="utf-8"))
+    assert fm.body.strip(), f"{path.name} has empty system prompt"
 
 
 def test_all_expected_agents_exist():
@@ -84,7 +85,7 @@ def test_models_match_design_spec():
         "trigger-desc-agent": "sonnet",
     }
     for path in _agent_files():
-        fm = frontmatter.loads(path.read_text(encoding="utf-8"))
+        fm = parse_frontmatter(path.read_text(encoding="utf-8"))
         expected = expected_models.get(path.stem)
         if expected is None:
             continue

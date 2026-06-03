@@ -13,6 +13,24 @@ documents. Two modes are supported:
 | **Subscription-native** (default) | Running inside Claude Code Pro/Max | Subscription |
 | **API-direct** | Running headless or in CI; explicit API budget | `ANTHROPIC_API_KEY` |
 
+## Runtime location (read this first)
+
+This plugin ships its own Python code, so it works immediately after install
+with **no `pip install` step**. The code lives next to this file at
+`scripts/lib/` and is reached through `${CLAUDE_SKILL_DIR}`, the absolute path of
+this skill's directory that Claude Code sets when the skill activates.
+
+Because each command block below runs in a fresh shell, **every** Python command
+is prefixed with the bundled library on `PYTHONPATH`:
+
+```bash
+PYTHONPATH="${CLAUDE_SKILL_DIR}/scripts/lib" python3 -m builder.integration.helpers_cli <subcommand>
+```
+
+Run the commands exactly as written — keep the `PYTHONPATH=...` prefix and use
+`python3`. The only things not bundled are a few system binaries used during
+Ingest (pandoc, poppler); Step 0 checks for them.
+
 ## Ask the user first
 
 1. **Input directory** — path to the source documents
@@ -25,13 +43,26 @@ documents. Two modes are supported:
 
 Follow these steps in order. Each LLM-driven step uses one of the bundled
 subagents (in `docs-to-skill/agents/`); each deterministic step uses
-`python -m builder.integration.helpers_cli <subcommand>`.
+`python -m builder.integration.helpers_cli <subcommand>` with the PYTHONPATH
+prefix described above.
+
+### 0. Preflight: check system tools
+
+Run the environment check and read its output:
+```bash
+PYTHONPATH="${CLAUDE_SKILL_DIR}/scripts/lib" python3 -m builder.integration.helpers_cli doctor
+```
+If a binary is reported MISSING, tell the user the install command `doctor`
+prints. `.md`/`.txt` inputs need nothing; PDFs need poppler (`pdftotext`,
+`pdftoppm`); Office/HTML inputs need `pandoc`. Missing tools only skip the
+affected files — the rest of the build proceeds — so it is fine to continue if
+the user's inputs don't need the missing tool.
 
 ### 1. Deterministic Ingest
 
 Run:
 ```bash
-python -m builder.integration.helpers_cli ingest-deterministic \
+PYTHONPATH="${CLAUDE_SKILL_DIR}/scripts/lib" python3 -m builder.integration.helpers_cli ingest-deterministic \
   --input <input-dir> --output <work-dir>
 ```
 
@@ -51,12 +82,17 @@ b. For each entry in the outline, dispatch the `extractor-agent` subagent
    with the source body + concept name + title. Save the returned body
    to a temp file and run:
    ```bash
-   python -m builder.integration.helpers_cli write-concept \
+   PYTHONPATH="${CLAUDE_SKILL_DIR}/scripts/lib" python3 -m builder.integration.helpers_cli write-concept \
      --vault <work-dir>/vault --name <name> --title <title> \
      --source-file <doc>.md --source-sections "<sections>" \
      --body-file <tempfile>
    ```
-c. Run `write-source` once per source document to preserve the original.
+c. Run `write-source` once per source document to preserve the original:
+   ```bash
+   PYTHONPATH="${CLAUDE_SKILL_DIR}/scripts/lib" python3 -m builder.integration.helpers_cli write-source \
+     --vault <work-dir>/vault --name <name> --original-file <doc> \
+     --page-count <n> --body-file <tempfile>
+   ```
 d. Dispatch the `coverage-transform-agent` with the source outline + the
    list of extracted concept titles. If `missed_topics` is non-empty,
    loop back to step (b) for the missed topics.
@@ -70,18 +106,22 @@ c. For each cluster with `members.length >= 2`:
    - Dispatch the `merger-agent` with the member bodies. It returns one
      merged body. Run:
      ```bash
-     python -m builder.integration.helpers_cli apply-merge \
+     PYTHONPATH="${CLAUDE_SKILL_DIR}/scripts/lib" python3 -m builder.integration.helpers_cli apply-merge \
        --vault <work-dir>/vault --members "a,b,c" --merged-body-file <tmp>
      ```
 d. Rebuild the inventory (after merges).
 e. For each remaining concept, dispatch the `linker-agent` with the
    target and the full inventory. It returns typed-link JSON. Run:
    ```bash
-   python -m builder.integration.helpers_cli apply-links \
+   PYTHONPATH="${CLAUDE_SKILL_DIR}/scripts/lib" python3 -m builder.integration.helpers_cli apply-links \
      --vault <work-dir>/vault --concept <name> --links-json <tmp>
    ```
 f. Group concepts by shared tags (≥ 2 concepts per tag). Run `write-moc`
-   for each group.
+   for each group:
+   ```bash
+   PYTHONPATH="${CLAUDE_SKILL_DIR}/scripts/lib" python3 -m builder.integration.helpers_cli write-moc \
+     --vault <work-dir>/vault --name <name> --title <title> --children "a,b,c"
+   ```
 
 ### 4. QA (sampled)
 
@@ -92,10 +132,11 @@ b. Citation QA: sample 10%. Dispatch the `citation-qa-agent`.
 c. Coherence QA: sample 15%. Dispatch the `coherence-qa-agent`.
 d. Coverage QA: for each source document, dispatch the `coverage-qa-agent`
    with the source outline + extracted titles.
-e. Link Resolution + Vault Integrity: pure-Python validators run via
-   `pytest` against the vault (`python -m builder.qa.link_resolution`
-   and `python -m builder.qa.integrity` — see the matter_expert
-   validators).
+e. Link Resolution + Vault Integrity: pure-Python validators:
+   ```bash
+   PYTHONPATH="${CLAUDE_SKILL_DIR}/scripts/lib" python3 -m builder.qa.link_resolution --vault <work-dir>/vault
+   PYTHONPATH="${CLAUDE_SKILL_DIR}/scripts/lib" python3 -m builder.qa.integrity --vault <work-dir>/vault
+   ```
 f. Aggregate verdicts. If FAIL on any validator, report to the user and
    ask whether to fix manually or replay the relevant phase.
 
@@ -103,14 +144,14 @@ f. Aggregate verdicts. If FAIL on any validator, report to the user and
 
 a. Run:
    ```bash
-   python -m builder.integration.helpers_cli build-indexes \
+   PYTHONPATH="${CLAUDE_SKILL_DIR}/scripts/lib" python3 -m builder.integration.helpers_cli build-indexes \
      --vault <work-dir>/vault --index-dir <work-dir>/_index
    ```
 b. Dispatch the `trigger-desc-agent` with the dominant vault topics
    (top 10 tags). It returns the pushy trigger description.
 c. Run:
    ```bash
-   python -m builder.integration.helpers_cli emit-finalize \
+   PYTHONPATH="${CLAUDE_SKILL_DIR}/scripts/lib" python3 -m builder.integration.helpers_cli emit-finalize \
      --plugin-root <plugin-out> --plugin-name <name> --version 0.1.0 \
      --description "<short desc>" --author "<user>" \
      --vault <work-dir>/vault --index-dir <work-dir>/_index \
@@ -119,7 +160,8 @@ c. Run:
 
 ### 6. Install and verify
 
-Tell the user:
+The produced plugin is self-contained (stdlib-only runtime, no system binaries
+required). Tell the user:
 ```
 cp -r <plugin-out> ~/.claude/plugins/<name>/
 # Restart Claude Code; the skill auto-loads.
@@ -130,7 +172,7 @@ cp -r <plugin-out> ~/.claude/plugins/<name>/
 For users without Claude Code, or for CI use. Single command:
 
 ```bash
-python -m builder.integration.cli build \
+PYTHONPATH="${CLAUDE_SKILL_DIR}/scripts/lib" python3 -m builder.integration.cli build \
   --input <dir> \
   --run-dir <state-dir> \
   --plugin-root <output> \
@@ -139,8 +181,9 @@ python -m builder.integration.cli build \
   --yes
 ```
 
-This uses the existing `AnthropicAgent` (requires `ANTHROPIC_API_KEY`).
-All 5 phases run inside Python; subagents are NOT used.
+This uses the existing `AnthropicAgent` (requires `ANTHROPIC_API_KEY` and the
+`anthropic` SDK, the one optional dependency — `pip install anthropic`). All 5
+phases run inside Python; subagents are NOT used.
 
 ## Resume / Replay (API-direct only)
 
