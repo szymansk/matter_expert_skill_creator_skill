@@ -36,3 +36,45 @@ def test_strip_frontmatter_ignores_unindented_triple_dash_in_value():
     text = "---\ntitle: Test\nbody_sample: \"x\"\n--- not a close\n---\nReal body\n"
     body = strip_frontmatter(text)
     assert body.startswith("Real body")
+
+
+from runtime.bm25 import build_bm25_index
+
+
+def _sample_docs():
+    return [
+        {"name": "oauth2-flow", "title": "OAuth2 Flow", "aliases": [],
+         "tags": ["auth", "oauth2"], "body": "OAuth2 is an authorization framework."},
+        {"name": "jwt-tokens", "title": "JWT Tokens", "aliases": ["json web token"],
+         "tags": ["auth", "token"], "body": "A JWT is a signed token used for auth."},
+    ]
+
+
+def test_build_index_has_expected_top_level_shape():
+    idx = build_bm25_index(_sample_docs())
+    assert idx["N"] == 2
+    assert idx["fields"] == ["title", "aliases", "tags", "body"]
+    assert set(idx["avg_field_len"]) == {"title", "aliases", "tags", "body"}
+    assert set(idx["doc_field_len"]) == {"oauth2-flow", "jwt-tokens"}
+
+
+def test_build_index_postings_count_per_field():
+    idx = build_bm25_index(_sample_docs())
+    # "oauth2" appears in oauth2-flow's title (1), tags (1), body (1).
+    assert idx["postings"]["oauth2"]["oauth2-flow"] == {"title": 1, "tags": 1, "body": 1}
+    # "auth" appears in both docs' tags, and in jwt-tokens' body once.
+    assert idx["postings"]["auth"]["jwt-tokens"]["tags"] == 1
+    assert idx["postings"]["auth"]["jwt-tokens"]["body"] == 1
+
+
+def test_build_index_doc_field_len_counts_tokens():
+    idx = build_bm25_index(_sample_docs())
+    assert idx["doc_field_len"]["oauth2-flow"]["title"] == 2  # "oauth2", "flow"
+    assert idx["doc_field_len"]["jwt-tokens"]["aliases"] == 3  # "json", "web", "token"
+
+
+def test_build_index_empty_docs():
+    idx = build_bm25_index([])
+    assert idx["N"] == 0
+    assert idx["postings"] == {}
+    assert idx["avg_field_len"] == {"title": 0.0, "aliases": 0.0, "tags": 0.0, "body": 0.0}

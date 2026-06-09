@@ -41,3 +41,42 @@ def strip_frontmatter(text: str) -> str:
         if lines[i] == "---":
             return "\n".join(lines[i + 1:]).lstrip("\n")
     return text  # unterminated — treat whole file as body
+
+
+def build_bm25_index(docs: list[dict]) -> dict:
+    """Build a serializable BM25F index from per-concept field documents.
+
+    ``docs`` is a list of dicts with keys ``name``, ``title``, ``aliases``
+    (list[str]), ``tags`` (list[str]), and ``body`` (str). Returns a JSON-
+    serializable index dict (see module docstring / plan for the shape).
+    """
+    postings: dict[str, dict[str, dict[str, int]]] = {}
+    doc_field_len: dict[str, dict[str, int]] = {}
+    field_total: dict[str, int] = {f: 0 for f in FIELDS}
+
+    for doc in docs:
+        name = doc["name"]
+        field_tokens = {
+            "title": tokenize(doc.get("title", "") or ""),
+            "aliases": tokenize(" ".join(doc.get("aliases") or [])),
+            "tags": tokenize(" ".join(doc.get("tags") or [])),
+            "body": tokenize(doc.get("body", "") or ""),
+        }
+        doc_field_len[name] = {f: len(field_tokens[f]) for f in FIELDS}
+        for f in FIELDS:
+            field_total[f] += len(field_tokens[f])
+            counts: dict[str, int] = {}
+            for tok in field_tokens[f]:
+                counts[tok] = counts.get(tok, 0) + 1
+            for tok, cnt in counts.items():
+                postings.setdefault(tok, {}).setdefault(name, {})[f] = cnt
+
+    n = len(docs)
+    avg_field_len = {f: (field_total[f] / n if n else 0.0) for f in FIELDS}
+    return {
+        "N": n,
+        "fields": list(FIELDS),
+        "avg_field_len": avg_field_len,
+        "doc_field_len": doc_field_len,
+        "postings": postings,
+    }
