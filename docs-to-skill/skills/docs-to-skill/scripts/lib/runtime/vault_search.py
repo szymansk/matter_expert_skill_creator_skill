@@ -51,17 +51,26 @@ def _load_or_build_index(
     if not index_path.exists():
         print("bm25: index missing — building it now.", file=sys.stderr)
         data = build_bm25_index(assemble_docs(vault_dir, concept_index_path))
-        index_path.parent.mkdir(parents=True, exist_ok=True)
-        index_path.write_text(
-            json.dumps(data, ensure_ascii=False, sort_keys=True), encoding="utf-8"
-        )
+        try:
+            index_path.parent.mkdir(parents=True, exist_ok=True)
+            index_path.write_text(
+                json.dumps(data, ensure_ascii=False, sort_keys=True), encoding="utf-8"
+            )
+        except OSError as exc:
+            print(
+                f"bm25: could not persist index ({exc}); using in-memory index.",
+                file=sys.stderr,
+            )
         return BM25Index.from_dict(data)
     if _vault_newer_than(vault_dir, index_path):
         print(
             "bm25: index may be stale; run bm25_build.py to refresh.",
             file=sys.stderr,
         )
-    return BM25Index.load(index_path)
+    try:
+        return BM25Index.load(index_path)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"bm25: corrupt index at {index_path}: {exc}") from exc
 
 
 def _ranked_with_scores(
