@@ -1,14 +1,14 @@
-"""Build the 4 JSON index files from the vault using matter_expert builders."""
+"""Build the 5 JSON index files from the vault using matter_expert builders."""
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from runtime.bm25 import build_bm25_index
 from matter_expert import (
     AliasMap, ConceptIndex, ConceptIndexEntry, ConceptPage,
     LinkGraph, MOCMap, MOCMapEntry, MOCPage, VaultPaths,
 )
+from runtime.bm25 import build_bm25_index
 
 
 def build_indexes(vault: VaultPaths, index_dir: Path) -> None:
