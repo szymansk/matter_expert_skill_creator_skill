@@ -2,9 +2,8 @@
 
 This package is bundled into the generated expert-skill plugin.
 It must never import third-party libraries — Python standard library only.
-``ripgrep`` is used to speed up body search when present, but it is optional:
-``vault_search`` falls back to a pure-Python scan, so a produced skill needs no
-system binaries at all to function.
+Layer-2 search ranks results with a precomputed BM25F index
+(``_index/bm25_index.json``); no system binaries are required at query time.
 """
 
 __version__ = "0.0.1"
@@ -32,6 +31,7 @@ from runtime.memory import (
 )
 from runtime.vault_cite import get_citation
 from runtime.vault_search import search_vault
+from runtime.bm25 import build_bm25_index, BM25Index, tokenize
 from runtime.vault_locate import locate_entry_points
 from runtime.vault_traverse import traverse
 from runtime.memory_update import update_memory, QUERY_CACHE_MAX_ENTRIES
@@ -49,6 +49,7 @@ __all__ = [
     "load_session_log", "save_session_log",
     "get_citation",
     "search_vault",
+    "build_bm25_index", "BM25Index", "tokenize",
     "locate_entry_points",
     "traverse",
     "update_memory", "QUERY_CACHE_MAX_ENTRIES",
