@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 from runtime.bm25 import tokenize
 from runtime.bm25 import strip_frontmatter
 
@@ -80,9 +83,6 @@ def test_build_index_empty_docs():
     assert idx["avg_field_len"] == {"title": 0.0, "aliases": 0.0, "tags": 0.0, "body": 0.0}
 
 
-import json
-from pathlib import Path
-
 from runtime.bm25 import assemble_docs
 
 
@@ -127,3 +127,13 @@ def test_assemble_docs_handles_concept_absent_from_index(tmp_path: Path):
     assert docs[0]["title"] == ""
     assert docs[0]["tags"] == []
     assert docs[0]["aliases"] == []
+
+
+def test_assemble_docs_returns_empty_when_concepts_dir_missing(tmp_path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    index_dir = tmp_path / "_index"
+    index_dir.mkdir()
+    concept_index = index_dir / "concept_index.json"
+    concept_index.write_text("{}", encoding="utf-8")
+    assert assemble_docs(vault, concept_index) == []

@@ -92,6 +92,8 @@ def assemble_docs(vault_dir: Path, concept_index_path: Path) -> list[dict]:
     concept_index_path = Path(concept_index_path)
     index = json.loads(concept_index_path.read_text(encoding="utf-8"))
     concepts_dir = vault_dir / "concepts"
+    if not concepts_dir.is_dir():
+        return []
     docs: list[dict] = []
     for md_file in sorted(concepts_dir.glob("*.md")):
         name = md_file.stem
