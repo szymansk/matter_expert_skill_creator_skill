@@ -76,6 +76,11 @@ def build_indexes(vault: VaultPaths, index_dir: Path) -> None:
         {
             "name": name,
             "title": page.frontmatter.title,
+            # Concept frontmatter carries no aliases today, so this is empty by
+            # design. The runtime rebuild path (runtime.bm25.assemble_docs)
+            # reads aliases from concept_index.json instead; if aliases are ever
+            # wired into concepts, populate them here too so the emit-built and
+            # runtime-rebuilt indexes stay identical.
             "aliases": [],
             "tags": list(page.frontmatter.tags),
             "body": page.body,
