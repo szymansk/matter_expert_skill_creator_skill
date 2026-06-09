@@ -6,10 +6,13 @@ never imports matter_expert — only test infrastructure does.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+
+from runtime.bm25 import build_bm25_index
 
 from matter_expert import (
     AliasMap,
@@ -26,13 +29,14 @@ from matter_expert import (
 
 @dataclass(frozen=True)
 class IndexBundle:
-    """The set of paths to the 4 JSON index files used at runtime."""
+    """The set of paths to the JSON index files used at runtime."""
 
     index_dir: Path
     concept_index: Path
     moc_map: Path
     link_graph: Path
     alias_map: Path
+    bm25_index: Path
 
 
 @pytest.fixture
@@ -97,12 +101,29 @@ def built_indexes(tmp_path: Path, example_vault_paths: VaultPaths) -> IndexBundl
     alias_map = AliasMap.build(concept_index)
     alias_map.write(index_dir / "alias_map.json")
 
+    # BM25F index — mirrors the Emit phase output.
+    bm25_docs = [
+        {
+            "name": name,
+            "title": page.frontmatter.title,
+            "aliases": [],
+            "tags": list(page.frontmatter.tags),
+            "body": page.body,
+        }
+        for name, page in concept_pages.items()
+    ]
+    (index_dir / "bm25_index.json").write_text(
+        json.dumps(build_bm25_index(bm25_docs), ensure_ascii=False, sort_keys=True),
+        encoding="utf-8",
+    )
+
     return IndexBundle(
         index_dir=index_dir,
         concept_index=index_dir / "concept_index.json",
         moc_map=index_dir / "moc_map.json",
         link_graph=index_dir / "link_graph.json",
         alias_map=index_dir / "alias_map.json",
+        bm25_index=index_dir / "bm25_index.json",
     )
 
 
