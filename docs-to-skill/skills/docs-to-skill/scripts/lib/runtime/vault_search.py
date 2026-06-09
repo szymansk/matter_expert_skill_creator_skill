@@ -1,51 +1,92 @@
-"""Layer 2 retrieval: ripgrep + frontmatter-tag filtering.
+"""Layer 2 retrieval: ranked BM25F search over a precomputed index.
 
-Body-content search across the vault's concept Markdown files using the
-ripgrep system binary. Optional tag filter narrows results to concepts
-whose frontmatter tags match the requested set.
+Loads ``_index/bm25_index.json`` (built by the Emit phase or rebuilt with
+``runtime/bm25_build.py``) and returns concept names ranked by relevance.
+An optional tag filter narrows results to concepts whose frontmatter tags
+match. Pure Python — no system binaries required at query time.
 
-Frontmatter (YAML between the leading ``---`` delimiters) is excluded from
-the search so that structural keys like ``merged_from`` do not produce false
-positive matches.
+If the index is missing it is built once automatically. If the vault has been
+modified more recently than the index a staleness warning is printed to stderr.
 """
 from __future__ import annotations
 
 import argparse
 import json
-import shutil
-import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
-# When this script is executed directly from a bundled plugin the runtime/
-# directory sits inside scripts/.  Add scripts/ to sys.path so that
-# `from runtime.xxx import` resolves regardless of the working directory.
+# When executed directly from a bundled plugin, runtime/ sits inside scripts/.
 _HERE = Path(__file__).resolve().parent
 if _HERE.name == "runtime":
     _scripts = _HERE.parent
     if str(_scripts) not in sys.path:
         sys.path.insert(0, str(_scripts))
 
+from runtime.bm25 import (
+    BM25Index,
+    assemble_docs,
+    build_bm25_index,
+    strip_frontmatter,  # re-exported for backward compatibility
+)
 from runtime.index import load_concept_index
 
+# Backward-compatible alias: older callers/tests import this private name.
+_strip_frontmatter = strip_frontmatter
 
-def _strip_frontmatter(text: str) -> str:
-    """Return only the body of a Markdown file (content after frontmatter).
+DEFAULT_TOP_N = 10
 
-    If the file starts with ``---``, the frontmatter block extends up to the
-    next ``---`` line. Everything after that closing delimiter is returned.
-    If no frontmatter is present the full text is returned unchanged.
-    """
-    if not text.startswith("---"):
-        return text
-    # Find the closing delimiter — must be on its own line after the opening.
-    rest = text[3:]  # skip opening "---"
-    close = rest.find("\n---")
-    if close == -1:
-        return text  # malformed — treat whole file as body
-    # Return everything after the closing "---\n", stripping any leading newline.
-    return rest[close + 4:].lstrip("\n")
+
+def _vault_newer_than(vault_dir: Path, index_path: Path) -> bool:
+    """True if any concept file is newer than the index file."""
+    idx_mtime = index_path.stat().st_mtime
+    for md_file in (vault_dir / "concepts").glob("*.md"):
+        if md_file.stat().st_mtime > idx_mtime:
+            return True
+    return False
+
+
+def _load_or_build_index(
+    index_path: Path, vault_dir: Path, concept_index_path: Path
+) -> BM25Index:
+    if not index_path.exists():
+        print("bm25: index missing — building it now.", file=sys.stderr)
+        data = build_bm25_index(assemble_docs(vault_dir, concept_index_path))
+        index_path.parent.mkdir(parents=True, exist_ok=True)
+        index_path.write_text(
+            json.dumps(data, ensure_ascii=False, sort_keys=True), encoding="utf-8"
+        )
+        return BM25Index.from_dict(data)
+    if _vault_newer_than(vault_dir, index_path):
+        print(
+            "bm25: index may be stale; run bm25_build.py to refresh.",
+            file=sys.stderr,
+        )
+    return BM25Index.load(index_path)
+
+
+def _ranked_with_scores(
+    query: str,
+    vault_dir: Path,
+    concept_index_path: Path,
+    tags: list[str] | None,
+    top_n: int | None,
+    bm25_index_path: Path | None,
+) -> list[tuple[str, float]]:
+    if bm25_index_path is None:
+        bm25_index_path = concept_index_path.parent / "bm25_index.json"
+    index = _load_or_build_index(bm25_index_path, vault_dir, concept_index_path)
+    ranked = index.score(query)  # full ranking; truncate after tag filter
+
+    if tags:
+        concept_index = load_concept_index(concept_index_path)
+        wanted = set(tags)
+        ranked = [
+            (name, score)
+            for name, score in ranked
+            if name in concept_index
+            and wanted.intersection(concept_index[name].get("tags", []))
+        ]
+    return ranked[:top_n] if top_n is not None else ranked
 
 
 def search_vault(
@@ -53,99 +94,53 @@ def search_vault(
     vault_dir: Path,
     concept_index_path: Path,
     tags: list[str] | None = None,
+    top_n: int | None = DEFAULT_TOP_N,
+    bm25_index_path: Path | None = None,
 ) -> list[str]:
-    """Return concept names whose body matches `query` (and `tags`, if given).
+    """Return concept names ranked by BM25F relevance (best first).
 
-    Ripgrep is used when present because it is fast on large vaults. When it is
-    not on PATH the search falls back to a pure-Python scan so the produced skill
-    works with zero system binaries installed — the result set is the same, only
-    slower. (Body content is matched in both paths; frontmatter is excluded.)
+    Results are restricted to concepts carrying at least one of ``tags`` when
+    given, and truncated to ``top_n`` (pass ``None`` for all hits).
     """
-    if shutil.which("rg") is not None:
-        matched_set = _search_with_ripgrep(query, vault_dir)
-    else:
-        matched_set = _search_with_python(query, vault_dir)
-
-    return _filter_by_tags(matched_set, concept_index_path, tags)
-
-
-def _search_with_ripgrep(query: str, vault_dir: Path) -> set[str]:
-    """Fast path: shell out to ripgrep over frontmatter-stripped bodies."""
-    concepts_dir = vault_dir / "concepts"
-
-    # Write frontmatter-stripped bodies to a temp directory so ripgrep only
-    # searches body content (preventing false positives on frontmatter keys).
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp_path = Path(tmp)
-        for md_file in concepts_dir.glob("*.md"):
-            body = _strip_frontmatter(md_file.read_text(encoding="utf-8"))
-            (tmp_path / md_file.name).write_text(body, encoding="utf-8")
-
-        proc = subprocess.run(
-            ["rg", "-l", "-i", "--no-messages", query, str(tmp_path)],
-            capture_output=True,
-            text=True,
-        )
-
-    if proc.returncode == 1:  # ripgrep returncode 1 = no matches (not an error)
-        return set()
-    if proc.returncode != 0:
-        raise RuntimeError(f"ripgrep failed: {proc.stderr.strip()}")
-
-    return {Path(line).stem for line in proc.stdout.splitlines() if line.strip()}
-
-
-def _search_with_python(query: str, vault_dir: Path) -> set[str]:
-    """Fallback path: case-insensitive substring scan, stdlib only.
-
-    Mirrors the ripgrep path semantically for the keyword queries this engine
-    uses: it matches against the frontmatter-stripped body so structural keys
-    never produce false positives.
-    """
-    concepts_dir = vault_dir / "concepts"
-    needle = query.lower()
-    matched: set[str] = set()
-    for md_file in concepts_dir.glob("*.md"):
-        body = _strip_frontmatter(md_file.read_text(encoding="utf-8"))
-        if needle in body.lower():
-            matched.add(md_file.stem)
-    return matched
-
-
-def _filter_by_tags(
-    matched_set: set[str],
-    concept_index_path: Path,
-    tags: list[str] | None,
-) -> list[str]:
-    """Restrict matches to concepts carrying at least one of `tags`."""
-    if tags:
-        index = load_concept_index(concept_index_path)
-        wanted_tags = set(tags)
-        matched_set = {
-            name for name in matched_set
-            if name in index and wanted_tags.intersection(index[name].get("tags", []))
-        }
-    return sorted(matched_set)
+    ranked = _ranked_with_scores(
+        query, vault_dir, concept_index_path, tags, top_n, bm25_index_path
+    )
+    return [name for name, _score in ranked]
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Search the vault body content.")
+    parser = argparse.ArgumentParser(description="Ranked BM25F vault search.")
     parser.add_argument("--vault", type=Path, required=True, help="Vault root directory")
     parser.add_argument("--concept-index", type=Path, required=True,
                         help="Path to concept_index.json")
-    parser.add_argument("--query", required=True, help="Keyword to search for")
+    parser.add_argument("--query", required=True, help="Search query")
     parser.add_argument("--tags", default="",
                         help="Comma-separated list of tags to filter by")
+    parser.add_argument("--top-n", type=int, default=DEFAULT_TOP_N,
+                        help="Maximum number of ranked results (0 = all)")
+    parser.add_argument("--scores", action="store_true",
+                        help="Output [{name, score}] instead of a name list")
+    parser.add_argument("--index", type=Path, default=None,
+                        help="Path to bm25_index.json (default: beside concept-index)")
     args = parser.parse_args(argv)
 
     tag_list = [t.strip() for t in args.tags.split(",") if t.strip()]
-    matches = search_vault(
+    top_n = args.top_n if args.top_n > 0 else None
+
+    ranked = _ranked_with_scores(
         query=args.query,
         vault_dir=args.vault,
         concept_index_path=args.concept_index,
         tags=tag_list or None,
+        top_n=top_n,
+        bm25_index_path=args.index,
     )
-    json.dump(matches, sys.stdout, indent=2, ensure_ascii=False)
+
+    if args.scores:
+        payload = [{"name": name, "score": score} for name, score in ranked]
+    else:
+        payload = [name for name, _score in ranked]
+    json.dump(payload, sys.stdout, indent=2, ensure_ascii=False)
     print()
     return 0
 
