@@ -71,3 +71,17 @@ def test_build_indexes_link_graph_materializes_inverse(tmp_path: Path):
     graph = json.loads((index_dir / "link_graph.json").read_text())
     # b depends on a → a "leads_to" b
     assert "b" in graph["a"]["leads_to"]
+
+
+def test_build_indexes_writes_bm25_index(example_vault_paths: VaultPaths, tmp_path: Path):
+    index_dir = tmp_path / "_index"
+    build_indexes(example_vault_paths, index_dir)
+
+    bm25_path = index_dir / "bm25_index.json"
+    assert bm25_path.exists(), "Emit must write bm25_index.json"
+    data = json.loads(bm25_path.read_text(encoding="utf-8"))
+    assert data["N"] >= 1
+    assert data["fields"] == ["title", "aliases", "tags", "body"]
+    # A known token from the example vault must be indexed.
+    assert "oauth2" in data["postings"]
+    assert "oauth2-flow" in data["postings"]["oauth2"]
