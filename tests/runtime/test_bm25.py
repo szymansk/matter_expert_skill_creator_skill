@@ -78,3 +78,52 @@ def test_build_index_empty_docs():
     assert idx["N"] == 0
     assert idx["postings"] == {}
     assert idx["avg_field_len"] == {"title": 0.0, "aliases": 0.0, "tags": 0.0, "body": 0.0}
+
+
+import json
+from pathlib import Path
+
+from runtime.bm25 import assemble_docs
+
+
+def test_assemble_docs_merges_body_and_index_metadata(tmp_path: Path):
+    vault = tmp_path / "vault"
+    concepts = vault / "concepts"
+    concepts.mkdir(parents=True)
+    (concepts / "oauth2-flow.md").write_text(
+        "---\ntitle: OAuth2 Flow\ntags: [auth]\n---\nOAuth2 body text.\n",
+        encoding="utf-8",
+    )
+    index_dir = tmp_path / "_index"
+    index_dir.mkdir()
+    concept_index = index_dir / "concept_index.json"
+    concept_index.write_text(json.dumps({
+        "oauth2-flow": {"title": "OAuth2 Flow", "tags": ["auth", "oauth2"], "aliases": ["oauth"]},
+    }), encoding="utf-8")
+
+    docs = assemble_docs(vault, concept_index)
+    assert len(docs) == 1
+    doc = docs[0]
+    assert doc["name"] == "oauth2-flow"
+    assert doc["title"] == "OAuth2 Flow"
+    assert doc["tags"] == ["auth", "oauth2"]
+    assert doc["aliases"] == ["oauth"]
+    assert doc["body"].startswith("OAuth2 body text")
+    assert "title:" not in doc["body"]  # frontmatter stripped
+
+
+def test_assemble_docs_handles_concept_absent_from_index(tmp_path: Path):
+    vault = tmp_path / "vault"
+    concepts = vault / "concepts"
+    concepts.mkdir(parents=True)
+    (concepts / "orphan.md").write_text("---\ntitle: X\n---\nBody.\n", encoding="utf-8")
+    index_dir = tmp_path / "_index"
+    index_dir.mkdir()
+    concept_index = index_dir / "concept_index.json"
+    concept_index.write_text("{}", encoding="utf-8")
+
+    docs = assemble_docs(vault, concept_index)
+    assert docs[0]["name"] == "orphan"
+    assert docs[0]["title"] == ""
+    assert docs[0]["tags"] == []
+    assert docs[0]["aliases"] == []

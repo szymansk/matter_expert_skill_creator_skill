@@ -80,3 +80,27 @@ def build_bm25_index(docs: list[dict]) -> dict:
         "doc_field_len": doc_field_len,
         "postings": postings,
     }
+
+
+def assemble_docs(vault_dir: Path, concept_index_path: Path) -> list[dict]:
+    """Build BM25 field documents from a vault and its concept index.
+
+    Bodies come from ``<vault_dir>/concepts/*.md`` (frontmatter stripped);
+    title/tags/aliases come from ``concept_index.json``.
+    """
+    vault_dir = Path(vault_dir)
+    concept_index_path = Path(concept_index_path)
+    index = json.loads(concept_index_path.read_text(encoding="utf-8"))
+    concepts_dir = vault_dir / "concepts"
+    docs: list[dict] = []
+    for md_file in sorted(concepts_dir.glob("*.md")):
+        name = md_file.stem
+        entry = index.get(name, {})
+        docs.append({
+            "name": name,
+            "title": entry.get("title", ""),
+            "aliases": list(entry.get("aliases", [])),
+            "tags": list(entry.get("tags", [])),
+            "body": strip_frontmatter(md_file.read_text(encoding="utf-8")),
+        })
+    return docs
