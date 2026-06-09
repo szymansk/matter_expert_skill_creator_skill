@@ -30,13 +30,14 @@ def tokenize(text: str) -> list[str]:
 def strip_frontmatter(text: str) -> str:
     """Return only the Markdown body (content after a leading ``---`` block).
 
-    If the file does not start with ``---`` or the block is unterminated, the
-    text is returned unchanged.
+    The frontmatter block is the text between a leading line ``---`` and the
+    next line that is exactly ``---``. If the file does not start with a
+    ``---`` line, or the block is unterminated, the text is returned unchanged.
     """
-    if not text.startswith("---"):
+    if not text.startswith("---\n"):
         return text
-    rest = text[3:]  # skip opening "---"
-    close = rest.find("\n---")
-    if close == -1:
-        return text  # malformed — treat whole file as body
-    return rest[close + 4:].lstrip("\n")
+    lines = text.split("\n")
+    for i in range(1, len(lines)):
+        if lines[i] == "---":
+            return "\n".join(lines[i + 1:]).lstrip("\n")
+    return text  # unterminated — treat whole file as body

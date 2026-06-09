@@ -28,3 +28,11 @@ def test_strip_frontmatter_without_frontmatter_is_unchanged():
 def test_strip_frontmatter_malformed_returns_whole_text():
     text = "---\ntitle: unclosed frontmatter\n"
     assert strip_frontmatter(text) == text
+
+
+def test_strip_frontmatter_ignores_unindented_triple_dash_in_value():
+    # A value line beginning with "---" but not exactly "---" must NOT be
+    # treated as the closing delimiter; the real closing "---" comes later.
+    text = "---\ntitle: Test\nbody_sample: \"x\"\n--- not a close\n---\nReal body\n"
+    body = strip_frontmatter(text)
+    assert body.startswith("Real body")
