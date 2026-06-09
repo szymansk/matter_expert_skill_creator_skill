@@ -126,3 +126,17 @@ def test_skill_md_template_uses_correct_runtime_paths_relative_to_skill_dir(
     assert "${CLAUDE_SKILL_DIR}/memory" in content
     assert "${CLAUDE_SKILL_DIR}/vault" in content
     assert "${CLAUDE_SKILL_DIR}/scripts/runtime" in content
+
+
+def test_skill_md_layer2_passes_top_n(tmp_path: Path, canned_agent):
+    skill_dir = tmp_path / "skills" / "x"
+    skill_dir.mkdir(parents=True)
+    path = generate_skill_md(
+        skill_dir=skill_dir,
+        meta=SkillMdMeta(skill_name="x", dominant_topics=["topic"]),
+        agent=canned_agent,
+    )
+    content = path.read_text(encoding="utf-8")
+    search_idx = content.index("vault_search.py")
+    search_block = content[search_idx:search_idx + 400]
+    assert "--top-n" in search_block
