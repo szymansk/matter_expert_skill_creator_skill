@@ -137,3 +137,68 @@ def test_assemble_docs_returns_empty_when_concepts_dir_missing(tmp_path):
     concept_index = index_dir / "concept_index.json"
     concept_index.write_text("{}", encoding="utf-8")
     assert assemble_docs(vault, concept_index) == []
+
+
+from runtime.bm25 import BM25Index, build_bm25_index
+
+
+def _index_from(docs):
+    return BM25Index.from_dict(build_bm25_index(docs))
+
+
+def test_score_ranks_relevant_concept_first():
+    docs = [
+        {"name": "oauth2-flow", "title": "OAuth2 Flow", "aliases": [],
+         "tags": ["oauth2"], "body": "OAuth2 OAuth2 OAuth2 authorization."},
+        {"name": "jwt-tokens", "title": "JWT Tokens", "aliases": [],
+         "tags": ["token"], "body": "A token mentions oauth2 once in passing."},
+    ]
+    ranked = _index_from(docs).score("oauth2")
+    assert ranked[0][0] == "oauth2-flow"
+    assert [n for n, _ in ranked][:2] == ["oauth2-flow", "jwt-tokens"]
+
+
+def test_title_hit_outranks_body_only_hit():
+    docs = [
+        {"name": "bernoulli-principle", "title": "Bernoulli Principle", "aliases": [],
+         "tags": [], "body": "Pressure and velocity relationship."},
+        {"name": "lift-generation", "title": "Lift Generation", "aliases": [],
+         "tags": [], "body": "Lift is sometimes explained via bernoulli effects."},
+    ]
+    ranked = _index_from(docs).score("bernoulli")
+    assert ranked[0][0] == "bernoulli-principle"
+
+
+def test_multi_term_query_prefers_doc_matching_more_terms():
+    docs = [
+        {"name": "both", "title": "", "aliases": [], "tags": [],
+         "body": "alpha beta appear together here."},
+        {"name": "one", "title": "", "aliases": [], "tags": [],
+         "body": "alpha appears but the other term does not."},
+    ]
+    ranked = _index_from(docs).score("alpha beta")
+    assert ranked[0][0] == "both"
+
+
+def test_score_no_matching_terms_returns_empty():
+    docs = [{"name": "x", "title": "T", "aliases": [], "tags": [], "body": "hello world"}]
+    assert _index_from(docs).score("zzzznope") == []
+
+
+def test_score_top_n_truncates():
+    docs = [
+        {"name": f"c{i}", "title": "", "aliases": [], "tags": [], "body": "common term"}
+        for i in range(5)
+    ]
+    ranked = _index_from(docs).score("common", top_n=2)
+    assert len(ranked) == 2
+
+
+def test_score_is_deterministic_on_ties():
+    docs = [
+        {"name": "b-concept", "title": "", "aliases": [], "tags": [], "body": "term"},
+        {"name": "a-concept", "title": "", "aliases": [], "tags": [], "body": "term"},
+    ]
+    ranked = _index_from(docs).score("term")
+    # Equal scores → tie-break alphabetically by name.
+    assert [n for n, _ in ranked] == ["a-concept", "b-concept"]
