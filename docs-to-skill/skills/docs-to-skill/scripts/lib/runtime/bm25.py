@@ -25,3 +25,18 @@ _TOKEN_RE = re.compile(r"[^\W_]+", re.UNICODE)
 def tokenize(text: str) -> list[str]:
     """Lowercase and split text into alphanumeric tokens (digits kept)."""
     return _TOKEN_RE.findall(text.lower())
+
+
+def strip_frontmatter(text: str) -> str:
+    """Return only the Markdown body (content after a leading ``---`` block).
+
+    If the file does not start with ``---`` or the block is unterminated, the
+    text is returned unchanged.
+    """
+    if not text.startswith("---"):
+        return text
+    rest = text[3:]  # skip opening "---"
+    close = rest.find("\n---")
+    if close == -1:
+        return text  # malformed — treat whole file as body
+    return rest[close + 4:].lstrip("\n")
