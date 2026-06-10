@@ -5,7 +5,13 @@ Resolution strategy (first hit wins):
 2. learned_aliases — substring of query → concept
 3. alias_map — substring of query → concept
 4. moc_map — MOC name appears in query → MOC's children
-5. otherwise — no match
+5. title_search — ranked BM25 over title/aliases/tags → top entry points
+6. otherwise — no match
+
+Strategies 1-4 are high-precision short-cuts (and the path the skill learns
+over time). Strategy 5 makes cold-start natural-language queries productive by
+ranking concepts on their title/aliases/tags only — a precise entry point,
+distinct from Layer-2's full-body search.
 """
 from __future__ import annotations
 
@@ -24,6 +30,7 @@ if _HERE.name == "runtime":
     if str(_scripts) not in sys.path:
         sys.path.insert(0, str(_scripts))
 
+from runtime.bm25 import BM25Index
 from runtime.index import IndexPaths, load_alias_map, load_moc_map
 from runtime.memory import (
     MemoryPaths,
@@ -31,9 +38,28 @@ from runtime.memory import (
     load_query_cache,
 )
 
+# Layer-1 title_search ranks these fields only (NOT body) — a precise entry
+# point, distinct from Layer 2's full-body search.
+_TITLE_FIELDS = ("title", "aliases", "tags")
+_TITLE_SEARCH_TOP_N = 3
+
 
 def _normalize(s: str) -> str:
     return " ".join(s.lower().split())
+
+
+def _title_search(bm25_index_path: Path, query: str) -> list[str]:
+    """Rank concepts by BM25 over title/aliases/tags. Returns up to N names with
+    score > 0. Returns [] (gracefully) if the index is absent or unreadable, so
+    Layer 1 never hard-fails the locate step."""
+    if not bm25_index_path.exists():
+        return []
+    try:
+        index = BM25Index.load(bm25_index_path)
+    except (json.JSONDecodeError, OSError, KeyError, ValueError):
+        return []
+    ranked = index.score(query, top_n=_TITLE_SEARCH_TOP_N, fields=_TITLE_FIELDS)
+    return [name for name, _score in ranked]
 
 
 def locate_entry_points(
@@ -83,6 +109,11 @@ def locate_entry_points(
                 "matches": list(entry.get("children", [])),
                 "strategy": "moc_match",
             }
+
+    # Strategy 5: ranked BM25 over title/aliases/tags (cold-start fallback).
+    title_matches = _title_search(index_paths.bm25_index, normalized)
+    if title_matches:
+        return {"matches": title_matches, "strategy": "title_search"}
 
     return {"matches": [], "strategy": "none"}
 

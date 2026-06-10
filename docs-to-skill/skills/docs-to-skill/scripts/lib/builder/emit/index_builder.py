@@ -1,12 +1,14 @@
-"""Build the 4 JSON index files from the vault using matter_expert builders."""
+"""Build the 5 JSON index files from the vault using matter_expert builders."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from matter_expert import (
     AliasMap, ConceptIndex, ConceptIndexEntry, ConceptPage,
     LinkGraph, MOCMap, MOCMapEntry, MOCPage, VaultPaths,
 )
+from runtime.bm25 import build_bm25_index
 
 
 def build_indexes(vault: VaultPaths, index_dir: Path) -> None:
@@ -68,3 +70,24 @@ def build_indexes(vault: VaultPaths, index_dir: Path) -> None:
     # AliasMap inverted from concept_index aliases.
     alias_map = AliasMap.build(concept_index)
     alias_map.write(index_dir / "alias_map.json")
+
+    # BM25F index for Layer-2 ranked search.
+    bm25_docs = [
+        {
+            "name": name,
+            "title": page.frontmatter.title,
+            # Concept frontmatter carries no aliases today, so this is empty by
+            # design. The runtime rebuild path (runtime.bm25.assemble_docs)
+            # reads aliases from concept_index.json instead; if aliases are ever
+            # wired into concepts, populate them here too so the emit-built and
+            # runtime-rebuilt indexes stay identical.
+            "aliases": [],
+            "tags": list(page.frontmatter.tags),
+            "body": page.body,
+        }
+        for name, page in concept_pages.items()
+    ]
+    (index_dir / "bm25_index.json").write_text(
+        json.dumps(build_bm25_index(bm25_docs), ensure_ascii=False, sort_keys=True),
+        encoding="utf-8",
+    )

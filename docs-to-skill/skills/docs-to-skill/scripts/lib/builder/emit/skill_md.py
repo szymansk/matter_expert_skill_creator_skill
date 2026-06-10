@@ -46,12 +46,13 @@ from it, so the commands work regardless of the current working directory.
      "<user-query>"
    ```
 
-2. **Layer 2 — Keyword search (if Layer 1 yielded nothing useful).** Run:
+2. **Layer 2 — Ranked BM25 search (if Layer 1 yielded nothing useful).** Returns concepts ranked by relevance, best first. Run:
    ```bash
    python3 "${{CLAUDE_SKILL_DIR}}/scripts/runtime/vault_search.py" \\
      --vault "${{CLAUDE_SKILL_DIR}}/vault" \\
      --concept-index "${{CLAUDE_SKILL_DIR}}/_index/concept_index.json" \\
-     --query "<keyword>"
+     --query "<keyword>" \\
+     --top-n 10
    ```
 
 3. **Layer 3 — Expand via typed links.** Run with the names found above:

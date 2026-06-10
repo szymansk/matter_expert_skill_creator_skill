@@ -23,6 +23,8 @@ def test_bundle_runtime_copies_runtime_package(tmp_path: Path):
     assert (runtime / "vault_cite.py").exists()
     assert (runtime / "memory_update.py").exists()
     assert (runtime / "memory_inspect.py").exists()
+    assert (runtime / "bm25.py").exists()
+    assert (runtime / "bm25_build.py").exists()
 
 
 def test_bundle_runtime_does_not_copy_pycache(tmp_path: Path):

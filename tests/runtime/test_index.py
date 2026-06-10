@@ -54,3 +54,10 @@ def test_load_concept_index_missing_file_raises(tmp_path: Path):
     import pytest
     with pytest.raises(FileNotFoundError):
         load_concept_index(tmp_path / "nope.json")
+
+
+def test_index_paths_exposes_bm25_index(tmp_path: Path):
+    from runtime.index import IndexPaths
+    index_dir = tmp_path / "_index"
+    paths = IndexPaths(index_dir=index_dir)
+    assert paths.bm25_index == index_dir / "bm25_index.json"

@@ -34,6 +34,10 @@ class IndexPaths:
     def alias_map(self) -> Path:
         return self.index_dir / "alias_map.json"
 
+    @property
+    def bm25_index(self) -> Path:
+        return self.index_dir / "bm25_index.json"
+
 
 def load_concept_index(path: Path) -> dict[str, dict[str, Any]]:
     """Load concept_index.json. Returns dict[concept_name, entry-fields]."""

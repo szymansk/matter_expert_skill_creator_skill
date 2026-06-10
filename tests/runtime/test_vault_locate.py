@@ -121,3 +121,52 @@ def test_cli_outputs_json(built_indexes, memory_dir: Path):
     parsed = json.loads(result.stdout)
     assert "matches" in parsed
     assert "strategy" in parsed
+
+
+def test_locate_title_search_cold_start(built_indexes, memory_dir: Path):
+    """Fresh skill (empty cache/aliases/alias_map): a query whose tokens match a
+    concept title should resolve via the new title_search strategy."""
+    result = locate_entry_points(
+        query="oauth2 flow",
+        index_dir=built_indexes.index_dir,
+        memory_dir=memory_dir,
+    )
+    assert result["strategy"] == "title_search"
+    assert "oauth2-flow" in result["matches"]
+    assert 1 <= len(result["matches"]) <= 3
+
+
+def test_locate_higher_strategy_wins_over_title_search(built_indexes, memory_dir: Path):
+    """An alias_map hit must take priority over the title_search fallback."""
+    (built_indexes.index_dir / "alias_map.json").write_text(
+        json.dumps({"OAuth": "oauth2-flow"}), encoding="utf-8"
+    )
+    result = locate_entry_points(
+        query="OAuth2 flow internals",
+        index_dir=built_indexes.index_dir,
+        memory_dir=memory_dir,
+    )
+    assert result["strategy"] == "alias_match"
+
+
+def test_locate_title_search_skipped_when_bm25_index_missing(built_indexes, memory_dir: Path):
+    """If bm25_index.json is absent (e.g. an older skill), fall back to 'none'
+    gracefully rather than crashing."""
+    built_indexes.bm25_index.unlink()
+    result = locate_entry_points(
+        query="oauth2 flow",
+        index_dir=built_indexes.index_dir,
+        memory_dir=memory_dir,
+    )
+    assert result["strategy"] == "none"
+    assert result["matches"] == []
+
+
+def test_locate_title_search_skipped_when_bm25_index_corrupt(built_indexes, memory_dir: Path):
+    built_indexes.bm25_index.write_text("{not json", encoding="utf-8")
+    result = locate_entry_points(
+        query="oauth2 flow",
+        index_dir=built_indexes.index_dir,
+        memory_dir=memory_dir,
+    )
+    assert result["strategy"] == "none"

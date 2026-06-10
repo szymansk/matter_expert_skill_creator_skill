@@ -21,3 +21,10 @@ def test_runtime_public_api_exports():
     assert callable(inspect_memory)
     assert callable(brainstorm)
     assert isinstance(DEFAULT_USER_PREFERENCES, dict)
+
+
+def test_runtime_exports_bm25_helpers():
+    from runtime import build_bm25_index, BM25Index, tokenize
+    assert callable(build_bm25_index)
+    assert callable(tokenize)
+    assert isinstance(BM25Index, type)
