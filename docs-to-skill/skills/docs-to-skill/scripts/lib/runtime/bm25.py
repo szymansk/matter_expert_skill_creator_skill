@@ -52,7 +52,7 @@ def build_bm25_index(docs: list[dict]) -> dict:
     """
     postings: dict[str, dict[str, dict[str, int]]] = {}
     doc_field_len: dict[str, dict[str, int]] = {}
-    field_total: dict[str, int] = {f: 0 for f in FIELDS}
+    field_total: dict[str, int] = dict.fromkeys(FIELDS, 0)
 
     for doc in docs:
         name = doc["name"]

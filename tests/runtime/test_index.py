@@ -56,8 +56,8 @@ def test_load_concept_index_missing_file_raises(tmp_path: Path):
         load_concept_index(tmp_path / "nope.json")
 
 
-def test_index_paths_exposes_bm25_index():
-    from pathlib import Path
+def test_index_paths_exposes_bm25_index(tmp_path: Path):
     from runtime.index import IndexPaths
-    paths = IndexPaths(index_dir=Path("/tmp/_index"))
-    assert paths.bm25_index == Path("/tmp/_index/bm25_index.json")
+    index_dir = tmp_path / "_index"
+    paths = IndexPaths(index_dir=index_dir)
+    assert paths.bm25_index == index_dir / "bm25_index.json"

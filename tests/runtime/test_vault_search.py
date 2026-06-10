@@ -22,7 +22,7 @@ def test_search_ranks_strong_match_first(vault_dir: Path, built_indexes):
         vault_dir=vault_dir,
         concept_index_path=built_indexes.concept_index,
     )
-    assert matches[0] == "session-management"
+    assert matches and matches[0] == "session-management"
 
 
 def test_search_returns_empty_for_no_matches(vault_dir: Path, built_indexes):
@@ -103,7 +103,7 @@ def test_cli_scores_flag_outputs_name_score_objects(vault_dir: Path, built_index
     assert isinstance(parsed, list)
     assert parsed and set(parsed[0]) == {"name", "score"}
     # 'google' is a unique term: only oauth2-google-flow matches it.
-    assert parsed[0]["name"] == "oauth2-google-flow"
+    assert parsed and parsed[0]["name"] == "oauth2-google-flow"
 
 
 def test_search_corrupt_index_raises_clear_error(vault_dir: Path, built_indexes):
