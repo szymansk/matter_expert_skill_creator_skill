@@ -106,11 +106,22 @@ class BM25Index:
     def load(cls, path: Path) -> "BM25Index":
         return cls.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))
 
-    def score(self, query: str, top_n: int | None = None) -> list[tuple[str, float]]:
+    def score(
+        self,
+        query: str,
+        top_n: int | None = None,
+        fields: tuple[str, ...] = FIELDS,
+    ) -> list[tuple[str, float]]:
         """Return ``(concept_name, score)`` pairs ranked by BM25F, best first.
 
-        Ties are broken alphabetically by concept name for determinism.
+        ``fields`` restricts which document fields contribute to the score; a
+        concept whose only occurrence of a query term is in an excluded field
+        contributes nothing for that term and is dropped if it matches nothing
+        in the selected fields. IDF stays global (document frequency over all
+        fields). The default scores all fields, so callers that omit ``fields``
+        get the unchanged full BM25F. Ties break alphabetically by name.
         """
+        field_set = set(fields)
         scores: dict[str, float] = {}
         for term in set(tokenize(query)):
             plist = self.postings.get(term)
@@ -121,11 +132,14 @@ class BM25Index:
             for name, field_counts in plist.items():
                 tf_prime = 0.0
                 for field, cnt in field_counts.items():
+                    if field not in field_set:
+                        continue
                     avg = self.avg_field_len.get(field) or 1.0
                     length = self.doc_field_len[name].get(field, 0)
                     denom = 1.0 - FIELD_B[field] + FIELD_B[field] * (length / avg)
                     tf_prime += FIELD_BOOSTS[field] * cnt / denom
-                scores[name] = scores.get(name, 0.0) + idf * tf_prime / (K1 + tf_prime)
+                if tf_prime > 0.0:
+                    scores[name] = scores.get(name, 0.0) + idf * tf_prime / (K1 + tf_prime)
         ranked = sorted(scores.items(), key=lambda kv: (-kv[1], kv[0]))
         return ranked[:top_n] if top_n is not None else ranked
 

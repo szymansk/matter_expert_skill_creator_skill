@@ -202,3 +202,25 @@ def test_score_is_deterministic_on_ties():
     ranked = _index_from(docs).score("term")
     # Equal scores → tie-break alphabetically by name.
     assert [n for n, _ in ranked] == ["a-concept", "b-concept"]
+
+
+def test_score_fields_restricts_to_selected_fields():
+    """The `fields` arg restricts which fields contribute; a term present only in
+    an excluded field must not surface that concept."""
+    docs = [
+        {"name": "a", "title": "alpha", "aliases": [], "tags": [], "body": "zeta zeta"},
+        {"name": "b", "title": "beta", "aliases": [], "tags": ["zeta"], "body": "nothing"},
+    ]
+    idx = _index_from(docs)
+
+    # All fields (default): both match "zeta" (a via body, b via tags).
+    assert {n for n, _ in idx.score("zeta")} == {"a", "b"}
+
+    # Title-only: "zeta" is in no title -> empty.
+    assert idx.score("zeta", fields=("title",)) == []
+
+    # Tags-only: only b has "zeta" in tags -> only b, body-only "a" excluded.
+    assert [n for n, _ in idx.score("zeta", fields=("tags",))] == ["b"]
+
+    # Title-only "alpha" -> only a.
+    assert [n for n, _ in idx.score("alpha", fields=("title",))] == ["a"]
