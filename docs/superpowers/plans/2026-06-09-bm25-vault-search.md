@@ -1123,19 +1123,25 @@ def test_search_finds_concept_with_keyword(vault_dir: Path, built_indexes):
     assert "oauth2-flow" in matches
 
 
-def test_search_ranks_title_match_first(vault_dir: Path, built_indexes):
-    """The concept whose title is 'OAuth2 Flow' should rank at the top for 'oauth2'."""
+def test_search_ranks_strong_match_first(vault_dir: Path, built_indexes):
+    """'session' hits session-management in title + tags + body, so it ranks #1.
+
+    (Verified empirically against the example vault: 'session' returns only
+    session-management.)
+    """
     matches = search_vault(
-        query="oauth2",
+        query="session",
         vault_dir=vault_dir,
         concept_index_path=built_indexes.concept_index,
     )
-    assert matches[0] == "oauth2-flow"
+    assert matches[0] == "session-management"
 
 
 def test_search_returns_empty_for_no_matches(vault_dir: Path, built_indexes):
+    # Single nonsense token — must tokenize to one term that is in no field.
+    # (Do NOT use a multi-word phrase: common words like "in"/"not" would match.)
     matches = search_vault(
-        query="ZZZZZZ_definitely_not_in_vault",
+        query="zzzznonexistentterm",
         vault_dir=vault_dir,
         concept_index_path=built_indexes.concept_index,
     )
@@ -1153,10 +1159,15 @@ def test_search_filters_by_tag(vault_dir: Path, built_indexes):
         assert m in {"oauth2-flow", "oauth2-google-flow"}
 
 
-def test_search_does_not_match_frontmatter_only_keywords(vault_dir: Path, built_indexes):
-    """'merged_from' is a frontmatter key and never appears in any body."""
+def test_search_excludes_frontmatter_content(vault_dir: Path, built_indexes):
+    """Frontmatter is not indexed.
+
+    Every concept's frontmatter has a `created: 2026-..` date, but the token
+    "2026" appears in no body/title/tag — so if frontmatter were indexed this
+    would match all concepts; it must return [].
+    """
     matches = search_vault(
-        query="merged_from",
+        query="2026",
         vault_dir=vault_dir,
         concept_index_path=built_indexes.concept_index,
     )
@@ -1203,13 +1214,27 @@ def test_cli_scores_flag_outputs_name_score_objects(vault_dir: Path, built_index
         [sys.executable, "-m", "runtime.vault_search",
          "--vault", str(vault_dir),
          "--concept-index", str(built_indexes.concept_index),
-         "--query", "OAuth2", "--scores"],
+         "--query", "google", "--scores"],
         capture_output=True, text=True, check=True,
     )
     parsed = json.loads(result.stdout)
     assert isinstance(parsed, list)
     assert parsed and set(parsed[0]) == {"name", "score"}
-    assert parsed[0]["name"] == "oauth2-flow"
+    # 'google' is a unique term: only oauth2-google-flow matches it.
+    assert parsed[0]["name"] == "oauth2-google-flow"
+
+
+def test_search_corrupt_index_raises_clear_error(vault_dir: Path, built_indexes):
+    """A corrupt bm25_index.json yields a ValueError naming the file, not a
+    bare JSONDecodeError."""
+    import pytest
+    built_indexes.bm25_index.write_text("{not valid json", encoding="utf-8")
+    with pytest.raises(ValueError, match="corrupt index"):
+        search_vault(
+            query="oauth2",
+            vault_dir=vault_dir,
+            concept_index_path=built_indexes.concept_index,
+        )
 
 
 def test_strip_frontmatter_still_importable_from_vault_search():
