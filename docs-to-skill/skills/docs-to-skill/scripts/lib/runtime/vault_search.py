@@ -1,26 +1,20 @@
-"""Layer 2 retrieval: ripgrep + frontmatter-tag filtering.
+"""Layer 2 retrieval: tokenized, IDF-ranked keyword search (stdlib only).
 
-Body-content search across the vault's concept Markdown files using the
-ripgrep system binary. Optional tag filter narrows results to concepts
-whose frontmatter tags match the requested set.
-
-Frontmatter (YAML between the leading ``---`` delimiters) is excluded from
-the search so that structural keys like ``merged_from`` do not produce false
-positive matches.
+The query is tokenized, light-stemmed, and synonym-expanded; each distinct
+query token is substring-matched against a concept's strong fields
+(title + aliases + tags) and weak fields (summary + body, frontmatter stripped).
+Concepts are ranked by the sum of IDF(token) * field-weight, with a boost when
+the whole normalized query appears verbatim. Pure Python — produced skills need
+no system binaries.
 """
 from __future__ import annotations
 
 import argparse
 import json
-import shutil
-import subprocess
+import math
 import sys
-import tempfile
 from pathlib import Path
 
-# When this script is executed directly from a bundled plugin the runtime/
-# directory sits inside scripts/.  Add scripts/ to sys.path so that
-# `from runtime.xxx import` resolves regardless of the working directory.
 _HERE = Path(__file__).resolve().parent
 if _HERE.name == "runtime":
     _scripts = _HERE.parent
@@ -28,6 +22,13 @@ if _HERE.name == "runtime":
         sys.path.insert(0, str(_scripts))
 
 from runtime.index import load_concept_index
+from runtime.text import (
+    build_synonym_index, expand_token, load_synonym_groups, tokenize,
+)
+
+_STRONG_WEIGHT = 3.0   # title + aliases + tags
+_WEAK_WEIGHT = 1.0     # summary + body
+_PHRASE_BOOST = 5.0    # whole normalized query appears verbatim
 
 
 def _strip_frontmatter(text: str) -> str:
@@ -48,84 +49,87 @@ def _strip_frontmatter(text: str) -> str:
     return rest[close + 4:].lstrip("\n")
 
 
+def _matches_any(text: str, variants: set[str]) -> bool:
+    return any(v and v in text for v in variants)
+
+
 def search_vault(
     query: str,
     vault_dir: Path,
     concept_index_path: Path,
     tags: list[str] | None = None,
+    synonyms_path: Path | None = None,
+    limit: int | None = None,
 ) -> list[str]:
-    """Return concept names whose body matches `query` (and `tags`, if given).
+    """Return concept names ranked by relevance to `query` (best first).
 
-    Ripgrep is used when present because it is fast on large vaults. When it is
-    not on PATH the search falls back to a pure-Python scan so the produced skill
-    works with zero system binaries installed — the result set is the same, only
-    slower. (Body content is matched in both paths; frontmatter is excluded.)
+    `tags`, if given, restricts results to concepts carrying one of those tags.
+    `synonyms_path` (optional) enables synonym expansion. `limit` caps results.
     """
-    if shutil.which("rg") is not None:
-        matched_set = _search_with_ripgrep(query, vault_dir)
-    else:
-        matched_set = _search_with_python(query, vault_dir)
-
-    return _filter_by_tags(matched_set, concept_index_path, tags)
-
-
-def _search_with_ripgrep(query: str, vault_dir: Path) -> set[str]:
-    """Fast path: shell out to ripgrep over frontmatter-stripped bodies."""
+    index = load_concept_index(concept_index_path)
     concepts_dir = vault_dir / "concepts"
 
-    # Write frontmatter-stripped bodies to a temp directory so ripgrep only
-    # searches body content (preventing false positives on frontmatter keys).
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp_path = Path(tmp)
+    bodies: dict[str, str] = {}
+    if concepts_dir.exists():
         for md_file in concepts_dir.glob("*.md"):
-            body = _strip_frontmatter(md_file.read_text(encoding="utf-8"))
-            (tmp_path / md_file.name).write_text(body, encoding="utf-8")
+            bodies[md_file.stem] = _strip_frontmatter(
+                md_file.read_text(encoding="utf-8")
+            ).lower()
 
-        proc = subprocess.run(
-            ["rg", "-l", "-i", "--no-messages", query, str(tmp_path)],
-            capture_output=True,
-            text=True,
-        )
+    names = set(bodies) | set(index)
+    strong_text: dict[str, str] = {}
+    weak_text: dict[str, str] = {}
+    combined: dict[str, str] = {}
+    for name in names:
+        entry = index.get(name, {})
+        strong_parts = [entry.get("title", "")]
+        strong_parts += list(entry.get("aliases", []))
+        strong_parts += list(entry.get("tags", []))
+        strong_text[name] = " ".join(strong_parts).lower()
+        weak_text[name] = (entry.get("summary", "").lower()
+                           + " " + bodies.get(name, ""))
+        combined[name] = strong_text[name] + " " + weak_text[name]
 
-    if proc.returncode == 1:  # ripgrep returncode 1 = no matches (not an error)
-        return set()
-    if proc.returncode != 0:
-        raise RuntimeError(f"ripgrep failed: {proc.stderr.strip()}")
+    syn_index = build_synonym_index(load_synonym_groups(synonyms_path))
+    q_tokens = tokenize(query)
+    token_variants = {t: expand_token(t, syn_index) for t in q_tokens}
 
-    return {Path(line).stem for line in proc.stdout.splitlines() if line.strip()}
+    n_docs = max(len(names), 1)
+    doc_freq: dict[str, int] = {
+        t: sum(1 for name in names if _matches_any(combined[name], variants))
+        for t, variants in token_variants.items()
+    }
 
+    def idf(token: str) -> float:
+        return math.log(1 + n_docs / (1 + doc_freq.get(token, 0)))
 
-def _search_with_python(query: str, vault_dir: Path) -> set[str]:
-    """Fallback path: case-insensitive substring scan, stdlib only.
+    norm_query = " ".join(query.lower().split())
 
-    Mirrors the ripgrep path semantically for the keyword queries this engine
-    uses: it matches against the frontmatter-stripped body so structural keys
-    never produce false positives.
-    """
-    concepts_dir = vault_dir / "concepts"
-    needle = query.lower()
-    matched: set[str] = set()
-    for md_file in concepts_dir.glob("*.md"):
-        body = _strip_frontmatter(md_file.read_text(encoding="utf-8"))
-        if needle in body.lower():
-            matched.add(md_file.stem)
-    return matched
+    scores: dict[str, float] = {}
+    for name in names:
+        score = 0.0
+        for token, variants in token_variants.items():
+            if _matches_any(strong_text[name], variants):
+                score += idf(token) * _STRONG_WEIGHT
+            elif _matches_any(weak_text[name], variants):
+                score += idf(token) * _WEAK_WEIGHT
+        if score and norm_query and norm_query in combined[name]:
+            score += _PHRASE_BOOST
+        if score > 0:
+            scores[name] = score
 
+    ranked = sorted(scores, key=lambda name: (-scores[name], name))
 
-def _filter_by_tags(
-    matched_set: set[str],
-    concept_index_path: Path,
-    tags: list[str] | None,
-) -> list[str]:
-    """Restrict matches to concepts carrying at least one of `tags`."""
     if tags:
-        index = load_concept_index(concept_index_path)
-        wanted_tags = set(tags)
-        matched_set = {
-            name for name in matched_set
-            if name in index and wanted_tags.intersection(index[name].get("tags", []))
-        }
-    return sorted(matched_set)
+        wanted = set(tags)
+        ranked = [
+            name for name in ranked
+            if name in index and wanted.intersection(index[name].get("tags", []))
+        ]
+
+    if limit is not None:
+        ranked = ranked[:limit]
+    return ranked
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -133,9 +137,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--vault", type=Path, required=True, help="Vault root directory")
     parser.add_argument("--concept-index", type=Path, required=True,
                         help="Path to concept_index.json")
-    parser.add_argument("--query", required=True, help="Keyword to search for")
+    parser.add_argument("--query", required=True,
+                        help="The user's question or keywords")
     parser.add_argument("--tags", default="",
                         help="Comma-separated list of tags to filter by")
+    parser.add_argument("--synonyms", type=Path, default=None,
+                        help="Optional path to synonyms.json")
+    parser.add_argument("--limit", type=int, default=20,
+                        help="Maximum number of ranked results")
     args = parser.parse_args(argv)
 
     tag_list = [t.strip() for t in args.tags.split(",") if t.strip()]
@@ -144,6 +153,8 @@ def main(argv: list[str] | None = None) -> int:
         vault_dir=args.vault,
         concept_index_path=args.concept_index,
         tags=tag_list or None,
+        synonyms_path=args.synonyms,
+        limit=args.limit,
     )
     json.dump(matches, sys.stdout, indent=2, ensure_ascii=False)
     print()
