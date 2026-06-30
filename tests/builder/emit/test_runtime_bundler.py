@@ -18,6 +18,9 @@ def test_bundle_runtime_copies_runtime_package(tmp_path: Path):
     assert (runtime / "memory.py").exists()
     assert (runtime / "vault_locate.py").exists()
     assert (runtime / "vault_search.py").exists()
+    # text.py is a hard dependency of vault_search (Layer 2) — pin it so a future
+    # move/exclusion can't ship a skill whose search dies at import.
+    assert (runtime / "text.py").exists()
     assert (runtime / "vault_traverse.py").exists()
     assert (runtime / "vault_brainstorm.py").exists()
     assert (runtime / "vault_cite.py").exists()

@@ -1,6 +1,26 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
 from pathlib import Path
 
+import pytest
+
 from builder.emit.skill_md import generate_skill_md, SkillMdMeta
+from builder.ingest.protocols import AgentResponse
+
+
+@dataclass
+class _FakeAgent:
+    calls: list[dict] = field(default_factory=list)
+
+    def call(self, prompt, *, model="haiku", images=None) -> AgentResponse:
+        self.calls.append({"prompt": prompt, "model": model})
+        return AgentResponse(text="FAKE_DESCRIPTION", input_tokens=10, output_tokens=5)
+
+
+@pytest.fixture
+def fake_agent() -> _FakeAgent:
+    return _FakeAgent()
 
 
 def test_generate_skill_md_writes_file(tmp_path: Path, canned_agent):
@@ -126,3 +146,16 @@ def test_skill_md_template_uses_correct_runtime_paths_relative_to_skill_dir(
     assert "${CLAUDE_SKILL_DIR}/memory" in content
     assert "${CLAUDE_SKILL_DIR}/vault" in content
     assert "${CLAUDE_SKILL_DIR}/scripts/runtime" in content
+
+
+def test_skill_md_documents_tokenized_layer2_and_orchestration(tmp_path, fake_agent):
+    path = generate_skill_md(
+        skill_dir=tmp_path,
+        meta=SkillMdMeta(skill_name="demo-expert", dominant_topics=["a", "b"]),
+        agent=fake_agent,
+    )
+    text = path.read_text(encoding="utf-8")
+    assert "always" in text.lower() and "layer 2" in text.lower()
+    assert "query_cache" in text
+    assert "--synonyms" in text
+    assert "tokeniz" in text.lower()  # explains tokenization

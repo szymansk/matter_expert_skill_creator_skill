@@ -1,5 +1,4 @@
 import json
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -94,43 +93,149 @@ def test_strip_frontmatter_no_frontmatter_unchanged():
     assert _strip_frontmatter(text) == text
 
 
-def test_search_falls_back_when_ripgrep_missing(monkeypatch, vault_dir: Path, built_indexes):
-    """With ripgrep absent, search_vault uses the pure-Python fallback and still
-    returns correct body-content matches — produced skills need no system binaries."""
-    monkeypatch.setattr("runtime.vault_search.shutil.which", lambda _: None)
-
+def test_search_tokenizes_natural_question(vault_dir: Path, built_indexes):
+    """A whole natural-language question matches via its content tokens, not as
+    one verbatim substring."""
     matches = search_vault(
-        query="OAuth2",
+        query="how does the oauth2 flow actually work?",
         vault_dir=vault_dir,
         concept_index_path=built_indexes.concept_index,
     )
     assert "oauth2-flow" in matches
 
-    # Frontmatter-only keys still must not match in the fallback path.
-    assert search_vault(
-        query="merged_from",
-        vault_dir=vault_dir,
-        concept_index_path=built_indexes.concept_index,
-    ) == []
 
-    # Tag filtering still applies in the fallback path.
-    tagged = search_vault(
-        query="auth",
-        vault_dir=vault_dir,
-        concept_index_path=built_indexes.concept_index,
-        tags=["oauth2"],
-    )
-    for m in tagged:
-        assert m in {"oauth2-flow", "oauth2-google-flow"}
+def test_search_ranks_rarer_token_concept_higher(tmp_path: Path):
+    """The `rare` concept matches BOTH query tokens (including the rare
+    `idempotenz` token) while the common* concepts match only `widget`.
+    Because `rare` accumulates higher IDF weight it outranks the
+    common-only concepts — this tests multi-token IDF scoring, not
+    pure-IDF isolation."""
+    import json
+    # Build a tiny synthetic vault + index inline.
+    tmp = tmp_path
+    concepts = tmp / "concepts"; concepts.mkdir()
+    (concepts / "rare.md").write_text(
+        "---\ntitle: Rare\n---\nThe widget uses idempotenz heavily.\n", encoding="utf-8")
+    (concepts / "common1.md").write_text(
+        "---\ntitle: C1\n---\nThe widget is common.\n", encoding="utf-8")
+    (concepts / "common2.md").write_text(
+        "---\ntitle: C2\n---\nThe widget is common too.\n", encoding="utf-8")
+    index = {
+        "rare": {"path": "concepts/rare.md", "title": "Rare", "summary": "",
+                 "tags": [], "aliases": [], "moc": []},
+        "common1": {"path": "concepts/common1.md", "title": "C1", "summary": "",
+                    "tags": [], "aliases": [], "moc": []},
+        "common2": {"path": "concepts/common2.md", "title": "C2", "summary": "",
+                    "tags": [], "aliases": [], "moc": []},
+    }
+    cidx = tmp / "concept_index.json"
+    cidx.write_text(json.dumps(index), encoding="utf-8")
+
+    ranked = search_vault(query="widget idempotenz", vault_dir=tmp,
+                          concept_index_path=cidx)
+    assert ranked[0] == "rare"  # matches both tokens incl. the rare one
 
 
-def test_ripgrep_and_python_paths_agree(vault_dir: Path, built_indexes):
-    """When ripgrep is available, the fast path and the fallback agree.
+def test_search_synonym_expansion_bridges_vocabulary(tmp_path: Path):
+    import json
+    concepts = tmp_path / "concepts"; concepts.mkdir()
+    (concepts / "resilience.md").write_text(
+        "---\ntitle: Resilience\n---\nTasks support resume after a crash.\n",
+        encoding="utf-8")
+    index = {"resilience": {"path": "concepts/resilience.md", "title": "Resilience",
+                            "summary": "", "tags": [], "aliases": [], "moc": []}}
+    cidx = tmp_path / "concept_index.json"
+    cidx.write_text(json.dumps(index), encoding="utf-8")
+    syn = tmp_path / "synonyms.json"
+    syn.write_text('{"groups": [["rerun", "resume"]]}', encoding="utf-8")
 
-    Skipped if ripgrep isn't installed (nothing to compare against)."""
-    if shutil.which("rg") is None:
-        pytest.skip("ripgrep not installed")
-    from runtime.vault_search import _search_with_ripgrep, _search_with_python
+    # Query says "rerun"; the body says "resume"; the synonym group bridges them.
+    matches = search_vault(query="rerun", vault_dir=tmp_path,
+                           concept_index_path=cidx, synonyms_path=syn)
+    assert "resilience" in matches
+    # Without synonyms there is no match.
+    assert search_vault(query="rerun", vault_dir=tmp_path,
+                        concept_index_path=cidx) == []
 
-    for query in ("OAuth2", "auth", "ZZZZZZ_nope"):
-        assert _search_with_ripgrep(query, vault_dir) == _search_with_python(query, vault_dir)
+
+def test_search_limit_caps_results(vault_dir: Path, built_indexes):
+    all_matches = search_vault(query="auth security token http session encryption",
+                               vault_dir=vault_dir,
+                               concept_index_path=built_indexes.concept_index)
+    assert len(all_matches) > 2          # cap is meaningful only if there are >2 candidates
+    limited = search_vault(query="auth security token http session encryption",
+                           vault_dir=vault_dir,
+                           concept_index_path=built_indexes.concept_index,
+                           limit=2)
+    assert len(limited) == 2
+
+
+def test_single_keyword_preserves_prior_matches(vault_dir: Path, built_indexes):
+    """Regression contract: a single keyword still returns its old body matches
+    (now possibly ranked / with extras), never fewer."""
+    matches = set(search_vault(query="auth", vault_dir=vault_dir,
+                               concept_index_path=built_indexes.concept_index))
+    assert {"basic-auth", "oauth2-flow", "oauth2-google-flow"} <= matches
+
+
+def test_phrase_boost_survives_query_punctuation(tmp_path: Path):
+    """A trailing '?'/',' must not kill the exact-phrase boost. Names are chosen
+    so that without the boost the alphabetical tie-break favors 'aaa-split'; the
+    boost must flip the contiguous-phrase concept 'zzz-exact' to the top."""
+    import json
+    concepts = tmp_path / "concepts"; concepts.mkdir()
+    (concepts / "zzz-exact.md").write_text(
+        "---\ntitle: Exact\n---\nThe oauth2 flow works here.\n", encoding="utf-8")
+    (concepts / "aaa-split.md").write_text(
+        "---\ntitle: Split\n---\noauth2 is a protocol and the flow is elsewhere.\n",
+        encoding="utf-8")
+    index = {
+        "zzz-exact": {"path": "concepts/zzz-exact.md", "title": "Exact",
+                      "summary": "", "tags": [], "aliases": [], "moc": []},
+        "aaa-split": {"path": "concepts/aaa-split.md", "title": "Split",
+                      "summary": "", "tags": [], "aliases": [], "moc": []},
+    }
+    cidx = tmp_path / "concept_index.json"
+    cidx.write_text(json.dumps(index), encoding="utf-8")
+
+    ranked = search_vault(query="oauth2 flow?", vault_dir=tmp_path,
+                          concept_index_path=cidx)
+    assert ranked[0] == "zzz-exact"  # exact-phrase boost wins despite the '?'
+
+
+def test_search_handles_null_title_and_summary(tmp_path: Path):
+    """A concept whose index entry has null title/summary (e.g. a bare `title:`
+    in YAML parsed as None) must not crash search_vault."""
+    import json
+    concepts = tmp_path / "concepts"; concepts.mkdir()
+    (concepts / "broken-meta.md").write_text(
+        "---\ntitle:\n---\nThis concept discusses idempotenz in depth.\n",
+        encoding="utf-8")
+    index = {"broken-meta": {"path": "concepts/broken-meta.md", "title": None,
+                             "summary": None, "tags": [], "aliases": [], "moc": []}}
+    cidx = tmp_path / "concept_index.json"
+    cidx.write_text(json.dumps(index), encoding="utf-8")
+
+    matches = search_vault(query="idempotenz", vault_dir=tmp_path,
+                           concept_index_path=cidx)
+    assert matches == ["broken-meta"]  # matched on body, no crash
+
+
+def test_search_matches_via_alias_strong_field(tmp_path: Path):
+    """A term present only in a concept's aliases (not title or body) must still
+    match — exercises the alias strong-field path the shared built_indexes
+    fixture (aliases=[]) never covers."""
+    import json
+    concepts = tmp_path / "concepts"; concepts.mkdir()
+    (concepts / "sr.md").write_text(
+        "---\ntitle: SR\n---\nA mechanism for picking work back up.\n",
+        encoding="utf-8")
+    index = {"sr": {"path": "concepts/sr.md", "title": "SR", "summary": "",
+                    "tags": [], "aliases": ["session resume"], "moc": []}}
+    cidx = tmp_path / "concept_index.json"
+    cidx.write_text(json.dumps(index), encoding="utf-8")
+
+    # 'resume' appears only in the alias, not the title or body.
+    matches = search_vault(query="resume", vault_dir=tmp_path,
+                           concept_index_path=cidx)
+    assert matches == ["sr"]

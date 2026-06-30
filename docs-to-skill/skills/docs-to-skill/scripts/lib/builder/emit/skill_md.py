@@ -38,20 +38,28 @@ from it, so the commands work regardless of the current working directory.
 
 ## When the user asks a question (Q&A mode)
 
-1. **Layer 1 — Locate entry points.** Run:
+1. **Layer 1 — Locate entry points (accelerator).** Run:
    ```bash
    python3 "${{CLAUDE_SKILL_DIR}}/scripts/runtime/vault_locate.py" \\
      --index-dir "${{CLAUDE_SKILL_DIR}}/_index" \\
      --memory-dir "${{CLAUDE_SKILL_DIR}}/memory" \\
      "<user-query>"
    ```
+   Treat its matches as starting points. **Always also run Layer 2** below,
+   unless Layer 1 returned `strategy: query_cache` (a confirmed exact prior) —
+   Layer 1 boosts but never replaces the keyword search.
 
-2. **Layer 2 — Keyword search (if Layer 1 yielded nothing useful).** Run:
+2. **Layer 2 — Keyword search (primary).** Pass the full question or the
+   meaningful keywords; the search tokenizes, drops stopwords, light-stems,
+   expands synonyms, and ranks concepts by how many distinct query terms they
+   match (rarer terms weigh more). Run:
    ```bash
    python3 "${{CLAUDE_SKILL_DIR}}/scripts/runtime/vault_search.py" \\
      --vault "${{CLAUDE_SKILL_DIR}}/vault" \\
      --concept-index "${{CLAUDE_SKILL_DIR}}/_index/concept_index.json" \\
-     --query "<keyword>"
+     --synonyms "${{CLAUDE_SKILL_DIR}}/memory/synonyms.json" \\
+     --limit 20 \\
+     --query "<the user's question or keywords>"
    ```
 
 3. **Layer 3 — Expand via typed links.** Run with the names found above:

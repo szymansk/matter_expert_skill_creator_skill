@@ -2,8 +2,8 @@
 
 Resolution strategy (first hit wins):
 1. query_cache — exact match (normalized) → cached concepts
-2. learned_aliases — substring of query → concept
-3. alias_map — substring of query → concept
+2. learned_aliases — ranked substring matches → concepts (longest alias first)
+3. alias_map — ranked substring matches → concepts (longest alias first)
 4. moc_map — MOC name appears in query → MOC's children
 5. otherwise — no match
 """
@@ -33,7 +33,27 @@ from runtime.memory import (
 
 
 def _normalize(s: str) -> str:
-    return " ".join(s.lower().split())
+    # Collapse hyphens to spaces so a hyphenated query term ("change-impact")
+    # matches a space-normalized alias ("change impact") — derive_aliases stores
+    # multi-word tags with hyphens replaced by spaces, so both sides must agree.
+    return " ".join(s.lower().replace("-", " ").split())
+
+
+def _ranked_alias_hits(alias_to_concept: dict[str, str],
+                       normalized_query: str) -> list[str]:
+    """All aliases that are substrings of the query, ranked by specificity
+    (longer alias = more specific), de-duped by concept (best rank kept)."""
+    hits: list[tuple[int, str]] = []
+    for alias, concept in alias_to_concept.items():
+        na = _normalize(alias)
+        if na and na in normalized_query:
+            hits.append((len(na), concept))
+    hits.sort(key=lambda pair: -pair[0])
+    ranked: list[str] = []
+    for _, concept in hits:
+        if concept not in ranked:
+            ranked.append(concept)
+    return ranked
 
 
 def locate_entry_points(
@@ -62,23 +82,22 @@ def locate_entry_points(
                 "strategy": "query_cache",
             }
 
-    # Strategy 2: substring match against learned_aliases (user-coined terms).
+    # Strategy 2: ranked substring matches against learned_aliases.
     learned = load_learned_aliases(memory_paths.learned_aliases)
-    normalized_query = _normalize(query)
-    for alias, concept in learned.items():
-        if _normalize(alias) in normalized_query:
-            return {"matches": [concept], "strategy": "learned_alias"}
+    ranked = _ranked_alias_hits(learned, normalized)
+    if ranked:
+        return {"matches": ranked, "strategy": "learned_alias"}
 
-    # Strategy 3: substring match against the static alias_map.
+    # Strategy 3: ranked substring matches against the static alias_map.
     aliases = load_alias_map(index_paths.alias_map)
-    for alias, concept in aliases.items():
-        if _normalize(alias) in normalized_query:
-            return {"matches": [concept], "strategy": "alias_match"}
+    ranked = _ranked_alias_hits(aliases, normalized)
+    if ranked:
+        return {"matches": ranked, "strategy": "alias_match"}
 
     # Strategy 4: MOC name appears in query.
     mocs = load_moc_map(index_paths.moc_map)
     for moc_name, entry in mocs.items():
-        if _normalize(moc_name) in normalized_query:
+        if _normalize(moc_name) in normalized:
             return {
                 "matches": list(entry.get("children", [])),
                 "strategy": "moc_match",

@@ -71,3 +71,22 @@ def test_build_indexes_link_graph_materializes_inverse(tmp_path: Path):
     graph = json.loads((index_dir / "link_graph.json").read_text())
     # b depends on a → a "leads_to" b
     assert "b" in graph["a"]["leads_to"]
+
+
+def test_build_indexes_populates_aliases(tmp_path: Path):
+    paths = VaultPaths(root=tmp_path / "vault")
+    paths.concepts.mkdir(parents=True)
+    paths.mocs.mkdir()
+    paths.sources.mkdir()
+    _seed(paths, "c192-session-resume", "Session Resume", tags=["resilience"])
+
+    index_dir = tmp_path / "vault" / "_index"
+    build_indexes(vault=paths, index_dir=index_dir)
+
+    concept_index = json.loads((index_dir / "concept_index.json").read_text())
+    assert concept_index["c192-session-resume"]["aliases"]  # non-empty
+    assert "session resume" in concept_index["c192-session-resume"]["aliases"]
+
+    alias_map = json.loads((index_dir / "alias_map.json").read_text())
+    assert alias_map != {}
+    assert alias_map.get("session resume") == "c192-session-resume"
