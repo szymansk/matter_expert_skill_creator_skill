@@ -176,3 +176,66 @@ def test_single_keyword_preserves_prior_matches(vault_dir: Path, built_indexes):
     matches = set(search_vault(query="auth", vault_dir=vault_dir,
                                concept_index_path=built_indexes.concept_index))
     assert {"basic-auth", "oauth2-flow", "oauth2-google-flow"} <= matches
+
+
+def test_phrase_boost_survives_query_punctuation(tmp_path: Path):
+    """A trailing '?'/',' must not kill the exact-phrase boost. Names are chosen
+    so that without the boost the alphabetical tie-break favors 'aaa-split'; the
+    boost must flip the contiguous-phrase concept 'zzz-exact' to the top."""
+    import json
+    concepts = tmp_path / "concepts"; concepts.mkdir()
+    (concepts / "zzz-exact.md").write_text(
+        "---\ntitle: Exact\n---\nThe oauth2 flow works here.\n", encoding="utf-8")
+    (concepts / "aaa-split.md").write_text(
+        "---\ntitle: Split\n---\noauth2 is a protocol and the flow is elsewhere.\n",
+        encoding="utf-8")
+    index = {
+        "zzz-exact": {"path": "concepts/zzz-exact.md", "title": "Exact",
+                      "summary": "", "tags": [], "aliases": [], "moc": []},
+        "aaa-split": {"path": "concepts/aaa-split.md", "title": "Split",
+                      "summary": "", "tags": [], "aliases": [], "moc": []},
+    }
+    cidx = tmp_path / "concept_index.json"
+    cidx.write_text(json.dumps(index), encoding="utf-8")
+
+    ranked = search_vault(query="oauth2 flow?", vault_dir=tmp_path,
+                          concept_index_path=cidx)
+    assert ranked[0] == "zzz-exact"  # exact-phrase boost wins despite the '?'
+
+
+def test_search_handles_null_title_and_summary(tmp_path: Path):
+    """A concept whose index entry has null title/summary (e.g. a bare `title:`
+    in YAML parsed as None) must not crash search_vault."""
+    import json
+    concepts = tmp_path / "concepts"; concepts.mkdir()
+    (concepts / "broken-meta.md").write_text(
+        "---\ntitle:\n---\nThis concept discusses idempotenz in depth.\n",
+        encoding="utf-8")
+    index = {"broken-meta": {"path": "concepts/broken-meta.md", "title": None,
+                             "summary": None, "tags": [], "aliases": [], "moc": []}}
+    cidx = tmp_path / "concept_index.json"
+    cidx.write_text(json.dumps(index), encoding="utf-8")
+
+    matches = search_vault(query="idempotenz", vault_dir=tmp_path,
+                           concept_index_path=cidx)
+    assert matches == ["broken-meta"]  # matched on body, no crash
+
+
+def test_search_matches_via_alias_strong_field(tmp_path: Path):
+    """A term present only in a concept's aliases (not title or body) must still
+    match — exercises the alias strong-field path the shared built_indexes
+    fixture (aliases=[]) never covers."""
+    import json
+    concepts = tmp_path / "concepts"; concepts.mkdir()
+    (concepts / "sr.md").write_text(
+        "---\ntitle: SR\n---\nA mechanism for picking work back up.\n",
+        encoding="utf-8")
+    index = {"sr": {"path": "concepts/sr.md", "title": "SR", "summary": "",
+                    "tags": [], "aliases": ["session resume"], "moc": []}}
+    cidx = tmp_path / "concept_index.json"
+    cidx.write_text(json.dumps(index), encoding="utf-8")
+
+    # 'resume' appears only in the alias, not the title or body.
+    matches = search_vault(query="resume", vault_dir=tmp_path,
+                           concept_index_path=cidx)
+    assert matches == ["sr"]

@@ -29,9 +29,11 @@ _TOKEN_RE = re.compile(r"[a-z0-9äöüß]+")
 _EN_SUFFIXES = ("ization", "isation", "ableness", "ingly", "able", "ible",
                 "ment", "ness", "ing", "ies", "ied", "ions", "ion", "ers",
                 "er", "ed", "es", "s")
-# Trimmed DE list — bare "e"/"n" removed (too aggressive); substring matching
-# bridges the rest. "er" and "es" are in _EN_SUFFIXES and processed first.
-_DE_SUFFIXES = ("ungen", "ung", "lich", "isch", "keit", "heit", "en", "em")
+# Conservative DE list. The short "en"/"em" (and bare "e"/"n", "er"/"es") endings
+# are intentionally excluded: they over-stem common English words
+# ("token"->"tok", "system"->"syst", "broken"->"brok"). Substring matching and
+# the longer, distinctive German suffixes below bridge the rest.
+_DE_SUFFIXES = ("ungen", "ung", "lich", "isch", "keit", "heit")
 
 
 def tokenize(text: str) -> list[str]:
@@ -83,19 +85,32 @@ def load_synonym_groups(path: Path | None) -> list[list[str]]:
 
 
 def build_synonym_index(groups: list[list[str]]) -> dict[str, set[str]]:
-    """Map each term to the union of every group it appears in."""
+    """Map each term — and its stem — to the union of every group it appears in.
+
+    Indexing the stem as well lets an inflected query token (``bugfixes``,
+    ``reruns``) resolve to its group once it is stemmed, so synonym expansion
+    and stemming compose instead of requiring an exact surface-form match.
+    """
     index: dict[str, set[str]] = {}
     for group in groups:
         members = set(group)
         for term in group:
             index.setdefault(term, set()).update(members)
+            stemmed = stem(term)
+            if stemmed != term:
+                index.setdefault(stemmed, set()).update(members)
     return index
 
 
 def expand_token(token: str, syn_index: dict[str, set[str]]) -> set[str]:
-    """Return match variants: the token, its stem, synonyms, and their stems."""
+    """Return match variants: the token, its stem, synonyms, and their stems.
+
+    Synonyms are looked up by both the raw token and its stem, so an inflected
+    query form still reaches its group (the index is keyed by both).
+    """
     variants = {token, stem(token)}
-    for synonym in syn_index.get(token, ()):
-        variants.add(synonym)
-        variants.add(stem(synonym))
+    for key in (token, stem(token)):
+        for synonym in syn_index.get(key, ()):
+            variants.add(synonym)
+            variants.add(stem(synonym))
     return variants

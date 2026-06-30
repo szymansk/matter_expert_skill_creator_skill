@@ -33,7 +33,10 @@ from runtime.memory import (
 
 
 def _normalize(s: str) -> str:
-    return " ".join(s.lower().split())
+    # Collapse hyphens to spaces so a hyphenated query term ("change-impact")
+    # matches a space-normalized alias ("change impact") — derive_aliases stores
+    # multi-word tags with hyphens replaced by spaces, so both sides must agree.
+    return " ".join(s.lower().replace("-", " ").split())
 
 
 def _ranked_alias_hits(alias_to_concept: dict[str, str],

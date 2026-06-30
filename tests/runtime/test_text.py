@@ -45,3 +45,21 @@ def test_expand_token_includes_synonyms_and_stems():
     assert {"rerun", "resume", "idempotenz"} <= variants
     # plain token with no group still yields itself + stem
     assert "bugfix" in expand_token("bugfixes", build_synonym_index([]))
+
+
+def test_expand_token_bridges_inflected_query_via_stem():
+    """Synonyms must compose with stemming: an inflected/plural query token
+    resolves to its group after stemming (regression — expand_token previously
+    only looked up the raw surface form and silently dropped the synonyms)."""
+    syn = build_synonym_index([["bugfix", "fix", "patch"]])
+    assert {"fix", "patch"} <= expand_token("bugfixes", syn)
+
+    syn2 = build_synonym_index([["rerun", "resume", "idempotenz", "resumable"]])
+    assert {"resume", "idempotenz"} <= expand_token("reruns", syn2)
+
+
+def test_stem_does_not_over_strip_english_en_words():
+    """The short DE 'en'/'em' suffixes are excluded so common English words are
+    not mangled into 3-char false-positive stems (e.g. token -> tok)."""
+    for word in ("token", "broken", "given", "system", "golden", "oxygen"):
+        assert stem(word) == word

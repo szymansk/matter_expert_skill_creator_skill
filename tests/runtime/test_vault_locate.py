@@ -151,3 +151,19 @@ def test_cli_outputs_json(built_indexes, memory_dir: Path):
     parsed = json.loads(result.stdout)
     assert "matches" in parsed
     assert "strategy" in parsed
+
+
+def test_hyphenated_query_matches_space_normalized_alias(built_indexes, memory_dir: Path):
+    """derive_aliases stores a multi-word tag hyphen->space ('change impact');
+    a query using the hyphenated form ('change-impact') must still hit it."""
+    (built_indexes.index_dir / "alias_map.json").write_text(
+        json.dumps({"change impact": "c126-change-impact-lookup"}),
+        encoding="utf-8",
+    )
+    result = locate_entry_points(
+        query="explain the change-impact behaviour",
+        index_dir=built_indexes.index_dir,
+        memory_dir=memory_dir,
+    )
+    assert result["strategy"] == "alias_match"
+    assert "c126-change-impact-lookup" in result["matches"]

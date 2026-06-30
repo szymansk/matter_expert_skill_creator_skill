@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -29,6 +30,11 @@ from runtime.text import (
 _STRONG_WEIGHT = 3.0   # title + aliases + tags
 _WEAK_WEIGHT = 1.0     # summary + body
 _PHRASE_BOOST = 5.0    # whole normalized query appears verbatim
+
+# Word-run regex (mirrors runtime.text) used to build the phrase-boost key so
+# punctuation in a natural-language question (",", "?") does not prevent the
+# normalized query from ever matching a body.
+_WORD_RE = re.compile(r"[a-z0-9äöüß]+")
 
 
 def _strip_frontmatter(text: str) -> str:
@@ -82,11 +88,14 @@ def search_vault(
     combined: dict[str, str] = {}
     for name in names:
         entry = index.get(name, {})
-        strong_parts = [entry.get("title", "")]
-        strong_parts += list(entry.get("aliases", []))
-        strong_parts += list(entry.get("tags", []))
+        # `or ""` / `or []` coerce an explicit JSON null (e.g. a concept page
+        # with a bare `title:`) to a safe empty value — `.get(k, default)` would
+        # return None when the key is present with a null value, crashing join.
+        strong_parts = [entry.get("title") or ""]
+        strong_parts += list(entry.get("aliases") or [])
+        strong_parts += list(entry.get("tags") or [])
         strong_text[name] = " ".join(strong_parts).lower()
-        weak_text[name] = (entry.get("summary", "").lower()
+        weak_text[name] = ((entry.get("summary") or "").lower()
                            + " " + bodies.get(name, ""))
         combined[name] = strong_text[name] + " " + weak_text[name]
 
@@ -103,7 +112,7 @@ def search_vault(
     def idf(token: str) -> float:
         return math.log(1 + n_docs / (1 + doc_freq.get(token, 0)))
 
-    norm_query = " ".join(query.lower().split())
+    norm_query = " ".join(_WORD_RE.findall(query.lower()))
 
     scores: dict[str, float] = {}
     for name in names:
