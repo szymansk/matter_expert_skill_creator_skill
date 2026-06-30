@@ -55,29 +55,6 @@ def main() -> int:
     # 4. Report.
     cidx = json.loads((BUILT / "_index" / "concept_index.json").read_text())
     amap = json.loads((BUILT / "_index" / "alias_map.json").read_text())
-
-    # 3b. Seed learned_aliases so vault_locate fires via synonym cross-entries.
-    # For each synonym group: find which concepts alias_map members map to,
-    # then add every synonym in the group that is not yet an alias_map key.
-    learned: dict[str, str] = {}
-    for group in SYNONYM_GROUPS["groups"]:
-        # Collect the concepts that any group member already hits in alias_map.
-        group_concepts: list[str] = []
-        for token in group:
-            concept = amap.get(token)
-            if concept and concept not in group_concepts:
-                group_concepts.append(concept)
-        # For each synonym that is NOT already in alias_map, add it to
-        # learned_aliases pointing to the group's first resolved concept.
-        if group_concepts:
-            for token in group:
-                if token not in amap:
-                    learned[token] = group_concepts[0]
-    if learned:
-        (BUILT / "memory" / "learned_aliases.json").write_text(
-            json.dumps(learned, indent=2, ensure_ascii=False), encoding="utf-8"
-        )
-        print(f"learned_aliases seeded: {len(learned)} entries")
     with_aliases = sum(1 for v in cidx.values() if v.get("aliases"))
     print(f"concepts: {len(cidx)}, with aliases: {with_aliases}, "
           f"alias_map entries: {len(amap)}")
