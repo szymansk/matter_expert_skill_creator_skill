@@ -7,6 +7,7 @@ from matter_expert import (
     AliasMap, ConceptIndex, ConceptIndexEntry, ConceptPage,
     LinkGraph, MOCMap, MOCMapEntry, MOCPage, VaultPaths,
 )
+from matter_expert.aliases import derive_aliases
 
 
 def build_indexes(vault: VaultPaths, index_dir: Path) -> None:
@@ -35,7 +36,9 @@ def build_indexes(vault: VaultPaths, index_dir: Path) -> None:
             title=page.frontmatter.title,
             summary=_summary(page.body),
             tags=list(page.frontmatter.tags),
-            aliases=[],
+            aliases=derive_aliases(
+                name, page.frontmatter.title, list(page.frontmatter.tags)
+            ),
             moc=[],
         )
         for name, page in concept_pages.items()
