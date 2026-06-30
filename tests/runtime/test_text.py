@@ -22,8 +22,10 @@ def test_stem_folds_english_plurals_and_suffixes():
 
 
 def test_stem_never_shorter_than_three():
-    assert len(stem(" run")) >= 3
-    assert stem("rerun") == "rerun"  # trimmed DE suffix list leaves it intact
+    # "aes" ends with "es", but stripping would leave "a" (<3), so the guard
+    # blocks the strip and the token is returned intact.
+    assert stem("aes") == "aes"
+    assert stem("rerun") == "rerun"  # no EN/DE suffix matches; returned as-is
 
 
 def test_load_synonym_groups_missing_file_is_empty(tmp_path: Path):

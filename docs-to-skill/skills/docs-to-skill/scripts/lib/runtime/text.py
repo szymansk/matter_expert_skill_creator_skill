@@ -30,9 +30,8 @@ _EN_SUFFIXES = ("ization", "isation", "ableness", "ingly", "able", "ible",
                 "ment", "ness", "ing", "ies", "ied", "ions", "ion", "ers",
                 "er", "ed", "es", "s")
 # Trimmed DE list — bare "e"/"n" removed (too aggressive); substring matching
-# bridges the rest.
-_DE_SUFFIXES = ("ungen", "ung", "lich", "isch", "keit", "heit", "en", "er",
-                "es", "em")
+# bridges the rest. "er" and "es" are in _EN_SUFFIXES and processed first.
+_DE_SUFFIXES = ("ungen", "ung", "lich", "isch", "keit", "heit", "en", "em")
 
 
 def tokenize(text: str) -> list[str]:
@@ -40,17 +39,23 @@ def tokenize(text: str) -> list[str]:
 
     Returns tokens in first-seen order, de-duplicated.
     """
+    seen_set: set[str] = set()
     seen: list[str] = []
     for raw in _TOKEN_RE.findall(text.lower()):
         if len(raw) < 2 or raw in _STOPWORDS:
             continue
-        if raw not in seen:
+        if raw not in seen_set:
             seen.append(raw)
+            seen_set.add(raw)
     return seen
 
 
 def stem(token: str) -> str:
-    """Strip at most one EN/DE suffix, keeping the stem at >=3 chars."""
+    """Strip at most one EN/DE suffix, never stripping below 3 chars.
+
+    Inputs already shorter than 3 chars are returned unchanged (cannot be
+    lengthened).
+    """
     for suffix in (*_EN_SUFFIXES, *_DE_SUFFIXES):
         if len(token) - len(suffix) >= 3 and token.endswith(suffix):
             return token[: -len(suffix)]
