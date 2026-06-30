@@ -105,6 +105,35 @@ def test_locate_query_cache_is_normalized(built_indexes, memory_dir: Path):
     assert result["strategy"] == "query_cache"
 
 
+def test_alias_hits_ranked_by_specificity(built_indexes, memory_dir: Path):
+    (built_indexes.index_dir / "alias_map.json").write_text(
+        json.dumps({"auth": "basic-auth", "oauth2 flow": "oauth2-flow"}),
+        encoding="utf-8",
+    )
+    result = locate_entry_points(
+        query="explain the oauth2 flow auth bits",
+        index_dir=built_indexes.index_dir,
+        memory_dir=memory_dir,
+    )
+    assert result["strategy"] == "alias_match"
+    # Longer, more specific alias ranks first; both concepts present.
+    assert result["matches"][0] == "oauth2-flow"
+    assert "basic-auth" in result["matches"]
+
+
+def test_short_generic_alias_does_not_collapse_query(built_indexes, memory_dir: Path):
+    (built_indexes.index_dir / "alias_map.json").write_text(
+        json.dumps({"id": "wrong-concept", "session management": "session-mgmt"}),
+        encoding="utf-8",
+    )
+    result = locate_entry_points(
+        query="how does session management handle an id",
+        index_dir=built_indexes.index_dir,
+        memory_dir=memory_dir,
+    )
+    assert result["matches"][0] == "session-mgmt"  # not the short "id" hit
+
+
 def test_cli_outputs_json(built_indexes, memory_dir: Path):
     result = subprocess.run(
         [
