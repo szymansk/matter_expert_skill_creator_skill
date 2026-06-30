@@ -88,7 +88,7 @@ New ranking engine, replacing whole-query substring:
 2. For each concept build **stemmed token sets** per field group:
    `strong` = title + aliases + tags; `weak` = summary + body.
 3. Compute corpus **document frequency** per stemmed token (how many concepts
-   contain it), → `idf(t) = log(N / (1 + df(t)))`.
+   contain it), → `idf(t) = log(1 + N / (1 + df(t)))` — smoothed so IDF is strictly positive even for a token matching most/all concepts (the bare `log(N/(1+df))` would go zero/negative and could drop common-only matches below the score>0 cutoff).
 4. Tokenize + stem the query; synonym-expand (groups loaded from
    `--synonyms`, optional; absent/empty ⇒ no expansion).
 5. **Score** each concept: for every distinct query token matched, add

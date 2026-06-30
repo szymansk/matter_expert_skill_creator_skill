@@ -40,11 +40,11 @@ def _ranked_alias_hits(alias_to_concept: dict[str, str],
                        normalized_query: str) -> list[str]:
     """All aliases that are substrings of the query, ranked by specificity
     (longer alias = more specific), de-duped by concept (best rank kept)."""
-    hits = [
-        (len(_normalize(alias)), concept)
-        for alias, concept in alias_to_concept.items()
-        if _normalize(alias) and _normalize(alias) in normalized_query
-    ]
+    hits: list[tuple[int, str]] = []
+    for alias, concept in alias_to_concept.items():
+        na = _normalize(alias)
+        if na and na in normalized_query:
+            hits.append((len(na), concept))
     hits.sort(key=lambda pair: -pair[0])
     ranked: list[str] = []
     for _, concept in hits:

@@ -52,7 +52,7 @@ def _synthesize_path_frequency(link_graph: dict[str, dict]) -> dict[str, dict]:
 
 def initialize_memory(memory_dir: Path,
                       link_graph: dict[str, dict] | None = None) -> None:
-    """Write the 5 initial memory files."""
+    """Write the initial mutable memory files."""
     _save_json(memory_dir / "query_cache.json", {})
     _save_json(
         memory_dir / "path_frequency.json",

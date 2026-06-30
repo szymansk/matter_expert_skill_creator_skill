@@ -149,7 +149,6 @@ def test_skill_md_template_uses_correct_runtime_paths_relative_to_skill_dir(
 
 
 def test_skill_md_documents_tokenized_layer2_and_orchestration(tmp_path, fake_agent):
-    from builder.emit.skill_md import SkillMdMeta, generate_skill_md
     path = generate_skill_md(
         skill_dir=tmp_path,
         meta=SkillMdMeta(skill_name="demo-expert", dominant_topics=["a", "b"]),

@@ -104,14 +104,15 @@ def test_search_tokenizes_natural_question(vault_dir: Path, built_indexes):
     assert "oauth2-flow" in matches
 
 
-def test_search_ranks_rarer_token_concept_higher():
-    """A concept matching a rare, discriminating token outranks one matching
-    only a common token."""
+def test_search_ranks_rarer_token_concept_higher(tmp_path: Path):
+    """The `rare` concept matches BOTH query tokens (including the rare
+    `idempotenz` token) while the common* concepts match only `widget`.
+    Because `rare` accumulates higher IDF weight it outranks the
+    common-only concepts — this tests multi-token IDF scoring, not
+    pure-IDF isolation."""
     import json
-    from pathlib import Path as _P
     # Build a tiny synthetic vault + index inline.
-    import tempfile
-    tmp = _P(tempfile.mkdtemp())
+    tmp = tmp_path
     concepts = tmp / "concepts"; concepts.mkdir()
     (concepts / "rare.md").write_text(
         "---\ntitle: Rare\n---\nThe widget uses idempotenz heavily.\n", encoding="utf-8")
@@ -158,11 +159,15 @@ def test_search_synonym_expansion_bridges_vocabulary(tmp_path: Path):
 
 
 def test_search_limit_caps_results(vault_dir: Path, built_indexes):
-    matches = search_vault(query="auth security token http session encryption",
+    all_matches = search_vault(query="auth security token http session encryption",
+                               vault_dir=vault_dir,
+                               concept_index_path=built_indexes.concept_index)
+    assert len(all_matches) > 2          # cap is meaningful only if there are >2 candidates
+    limited = search_vault(query="auth security token http session encryption",
                            vault_dir=vault_dir,
                            concept_index_path=built_indexes.concept_index,
                            limit=2)
-    assert len(matches) <= 2
+    assert len(limited) == 2
 
 
 def test_single_keyword_preserves_prior_matches(vault_dir: Path, built_indexes):

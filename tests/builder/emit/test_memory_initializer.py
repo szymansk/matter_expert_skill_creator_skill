@@ -4,7 +4,7 @@ from pathlib import Path
 from builder.emit.memory_initializer import initialize_memory
 
 
-def test_initialize_memory_creates_all_5_files(tmp_path: Path):
+def test_initialize_memory_creates_all_initial_files(tmp_path: Path):
     memory_dir = tmp_path / "memory"
     initialize_memory(memory_dir=memory_dir, link_graph={})
 
@@ -13,6 +13,7 @@ def test_initialize_memory_creates_all_5_files(tmp_path: Path):
     assert (memory_dir / "user_preferences.json").exists()
     assert (memory_dir / "learned_aliases.json").exists()
     assert (memory_dir / "session_log.json").exists()
+    assert (memory_dir / "synonyms.json").exists()
 
 
 def test_initial_query_cache_empty(tmp_path: Path):

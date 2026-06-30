@@ -40,7 +40,7 @@ def derive_aliases(name: str, title: str, tags: list[str]) -> list[str]:
             add(tag.replace("-", " "))
 
     for word in _norm(title).split():
-        if len(word) >= _MIN_SINGLE_WORD_LEN and word not in _GENERIC:
+        if len(word) >= _MIN_SINGLE_WORD_LEN:
             add(word)
 
     return aliases

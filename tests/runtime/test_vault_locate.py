@@ -132,6 +132,7 @@ def test_short_generic_alias_does_not_collapse_query(built_indexes, memory_dir: 
         memory_dir=memory_dir,
     )
     assert result["matches"][0] == "session-mgmt"  # not the short "id" hit
+    assert "wrong-concept" in result["matches"]   # short hit still present, just ranked lower
 
 
 def test_cli_outputs_json(built_indexes, memory_dir: Path):
