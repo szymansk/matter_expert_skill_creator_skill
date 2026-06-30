@@ -62,3 +62,4 @@ def initialize_memory(memory_dir: Path,
                dict(DEFAULT_USER_PREFERENCES))
     _save_json(memory_dir / "learned_aliases.json", {})
     _save_json(memory_dir / "session_log.json", [])
+    _save_json(memory_dir / "synonyms.json", {"groups": []})

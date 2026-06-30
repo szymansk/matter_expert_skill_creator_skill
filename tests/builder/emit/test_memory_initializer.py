@@ -62,3 +62,10 @@ def test_path_frequency_synthesized_from_link_graph(tmp_path: Path):
     freq = json.loads((memory_dir / "path_frequency.json").read_text())
     assert freq["oauth2-flow"]["co_accessed"]["jwt-tokens"] == 1
     assert freq["jwt-tokens"]["co_accessed"]["oauth2-flow"] == 1
+
+
+def test_initial_synonyms_is_empty_groups(tmp_path: Path):
+    memory_dir = tmp_path / "memory"
+    initialize_memory(memory_dir=memory_dir)
+    data = json.loads((memory_dir / "synonyms.json").read_text())
+    assert data == {"groups": []}
